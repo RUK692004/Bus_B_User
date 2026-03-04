@@ -9,7 +9,7 @@ class GetStartedScreen extends StatelessWidget {
     return Scaffold(
       body: Container(
         width: double.infinity,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
             begin: Alignment.topCenter,
@@ -20,14 +20,13 @@ class GetStartedScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Top Section
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+                children: const [
                   Icon(Icons.directions_bus, color: Colors.white, size: 40),
                   SizedBox(width: 10),
                   Text(
-                    "BUSBEE",
+                    'BUSBEE',
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.bold,
@@ -37,13 +36,11 @@ class GetStartedScreen extends StatelessWidget {
                   ),
                 ],
               ),
-
-              // Illustration
               Expanded(
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
+                    children: const [
                       Icon(
                         Icons.directions_bus_filled,
                         size: 120,
@@ -51,14 +48,13 @@ class GetStartedScreen extends StatelessWidget {
                       ),
                       SizedBox(height: 20),
                       Text(
-                        "Track Your Bus",
+                        'Track Your Bus',
                         style: TextStyle(fontSize: 20, color: Colors.white70),
                       ),
                     ],
                   ),
                 ),
               ),
-              // Button
               Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: SizedBox(
@@ -80,7 +76,7 @@ class GetStartedScreen extends StatelessWidget {
                       );
                     },
                     child: const Text(
-                      "Get Started",
+                      'Get Started',
                       style: TextStyle(
                         fontSize: 18,
                         color: Colors.white,

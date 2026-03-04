@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "39552685714",
+    "project_id": "busbee-udaya-2026",
+    "storage_bucket": "busbee-udaya-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:39552685714:android:0e299dc934e00d1878f84b",
+        "android_client_info": {
+          "package_name": "com.example.flutter_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCdgNQ9RVHKrcL25vqVHkxgLaFRKbM-hhY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
