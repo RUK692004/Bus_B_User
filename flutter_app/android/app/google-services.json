@@ -1,26 +1,65 @@
 {
   "project_info": {
-    "project_number": "39552685714",
-    "project_id": "busbee-udaya-2026",
-    "storage_bucket": "busbee-udaya-2026.firebasestorage.app"
+    "project_number": "1011968249422",
+    "project_id": "bus-bee-ce6fa",
+    "storage_bucket": "bus-bee-ce6fa.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:39552685714:android:0e299dc934e00d1878f84b",
+        "mobilesdk_app_id": "1:1011968249422:android:f174d1a84f6d2d8037bd1f",
         "android_client_info": {
-          "package_name": "com.example.flutter_app"
+          "package_name": "com.busbee.bustracker"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1011968249422-v4tndtdf3tm6ru6jme0sdto9jpdbggsq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyCdgNQ9RVHKrcL25vqVHkxgLaFRKbM-hhY"
+          "current_key": "AIzaSyCR7AK4SKTLZFWxLfVda1Zp2-BSrCZnm2M"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1011968249422-v4tndtdf3tm6ru6jme0sdto9jpdbggsq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1011968249422:android:d2ef2af21923025337bd1f",
+        "android_client_info": {
+          "package_name": "com.example.flutter_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1011968249422-v4tndtdf3tm6ru6jme0sdto9jpdbggsq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCR7AK4SKTLZFWxLfVda1Zp2-BSrCZnm2M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1011968249422-v4tndtdf3tm6ru6jme0sdto9jpdbggsq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
