@@ -41,48 +41,49 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBjxcBw91HexvnXJgpUrOa3XnFe8GTYp4o',
-    appId: '1:39552685714:web:8665dbeef03ce58e78f84b',
-    messagingSenderId: '39552685714',
-    projectId: 'busbee-udaya-2026',
-    authDomain: 'busbee-udaya-2026.firebaseapp.com',
-    storageBucket: 'busbee-udaya-2026.firebasestorage.app',
-    measurementId: 'G-J4Z7W3BNHJ',
+    apiKey: 'AIzaSyC-ITLeTM09D7PkyU1GJqlHrlnSDCZ8nLc',
+    appId: '1:1011968249422:web:a790ec16b4443b8c37bd1f',
+    messagingSenderId: '1011968249422',
+    projectId: 'bus-bee-ce6fa',
+    authDomain: 'bus-bee-ce6fa.firebaseapp.com',
+    storageBucket: 'bus-bee-ce6fa.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCdgNQ9RVHKrcL25vqVHkxgLaFRKbM-hhY',
-    appId: '1:39552685714:android:0e299dc934e00d1878f84b',
-    messagingSenderId: '39552685714',
-    projectId: 'busbee-udaya-2026',
-    storageBucket: 'busbee-udaya-2026.firebasestorage.app',
+    apiKey: 'AIzaSyCR7AK4SKTLZFWxLfVda1Zp2-BSrCZnm2M',
+    appId: '1:1011968249422:android:d2ef2af21923025337bd1f',
+    messagingSenderId: '1011968249422',
+    projectId: 'bus-bee-ce6fa',
+    storageBucket: 'bus-bee-ce6fa.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAjUtOH-3sLi12H_1TaEpFpD1U9XgQkqLc',
-    appId: '1:39552685714:ios:343c7d76473d725678f84b',
-    messagingSenderId: '39552685714',
-    projectId: 'busbee-udaya-2026',
-    storageBucket: 'busbee-udaya-2026.firebasestorage.app',
+    apiKey: 'AIzaSyDv-UNn0V8FQAesga3445w34RMbhv1hIvY',
+    appId: '1:1011968249422:ios:4a39b1eee21799c937bd1f',
+    messagingSenderId: '1011968249422',
+    projectId: 'bus-bee-ce6fa',
+    storageBucket: 'bus-bee-ce6fa.firebasestorage.app',
+    iosClientId: '1011968249422-3qp4rccf21fvohoelm9788gug5902v3s.apps.googleusercontent.com',
     iosBundleId: 'com.example.flutterApp',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAjUtOH-3sLi12H_1TaEpFpD1U9XgQkqLc',
-    appId: '1:39552685714:ios:343c7d76473d725678f84b',
-    messagingSenderId: '39552685714',
-    projectId: 'busbee-udaya-2026',
-    storageBucket: 'busbee-udaya-2026.firebasestorage.app',
+    apiKey: 'AIzaSyDv-UNn0V8FQAesga3445w34RMbhv1hIvY',
+    appId: '1:1011968249422:ios:4a39b1eee21799c937bd1f',
+    messagingSenderId: '1011968249422',
+    projectId: 'bus-bee-ce6fa',
+    storageBucket: 'bus-bee-ce6fa.firebasestorage.app',
+    iosClientId: '1011968249422-3qp4rccf21fvohoelm9788gug5902v3s.apps.googleusercontent.com',
     iosBundleId: 'com.example.flutterApp',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBjxcBw91HexvnXJgpUrOa3XnFe8GTYp4o',
-    appId: '1:39552685714:web:15b27513f3a4f4f278f84b',
-    messagingSenderId: '39552685714',
-    projectId: 'busbee-udaya-2026',
-    authDomain: 'busbee-udaya-2026.firebaseapp.com',
-    storageBucket: 'busbee-udaya-2026.firebasestorage.app',
-    measurementId: 'G-3WTVHWGX54',
+    apiKey: 'AIzaSyC-ITLeTM09D7PkyU1GJqlHrlnSDCZ8nLc',
+    appId: '1:1011968249422:web:c710e44a6110dfe037bd1f',
+    messagingSenderId: '1011968249422',
+    projectId: 'bus-bee-ce6fa',
+    authDomain: 'bus-bee-ce6fa.firebaseapp.com',
+    storageBucket: 'bus-bee-ce6fa.firebasestorage.app',
   );
+
 }
