@@ -56,7 +56,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
 
       if (!mounted) return;
-      Navigator.pushReplacement(
+      Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
