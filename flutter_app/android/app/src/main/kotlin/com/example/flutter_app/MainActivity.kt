@@ -1,4 +1,4 @@
-package com.example.flutter_app
+package com.busbee.user
 
 import io.flutter.embedding.android.FlutterActivity
 

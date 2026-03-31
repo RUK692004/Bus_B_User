@@ -1,4 +1,6 @@
 class BusInfo {
+  /// Firestore document id for the bus (used for `bus_locations/{id}`).
+  final String? id;
   final String name;
   final String number;
   final double distanceKm;
@@ -7,6 +9,7 @@ class BusInfo {
   final List<String> stops;
 
   const BusInfo({
+    this.id,
     required this.name,
     required this.number,
     required this.distanceKm,

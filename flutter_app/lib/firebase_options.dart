@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyCR7AK4SKTLZFWxLfVda1Zp2-BSrCZnm2M',
-    appId: '1:1011968249422:android:d2ef2af21923025337bd1f',
+    appId: '1:1011968249422:android:b1aec99b485f63d437bd1f',
     messagingSenderId: '1011968249422',
     projectId: 'bus-bee-ce6fa',
     storageBucket: 'bus-bee-ce6fa.firebasestorage.app',

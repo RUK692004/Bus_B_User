@@ -119,7 +119,7 @@ class _IntroScreenState extends State<IntroScreen>
                         ),
                       ),
                       onPressed: () {
-                        Navigator.pushReplacement(
+                        Navigator.push(
                           context,
                           PageRouteBuilder(
                             transitionDuration: const Duration(
