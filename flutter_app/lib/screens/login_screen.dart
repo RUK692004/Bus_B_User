@@ -15,8 +15,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isLoading = false;
-  bool _obscurePassword = true;
   String? _errorMessage;
+  bool _isPasswordVisible = false;
 
   @override
   void dispose() {
@@ -50,7 +50,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
 
-      Navigator.pushReplacement(
+      Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => const BusSearchScreen(),
@@ -177,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           // Password Field
                           TextField(
                             controller: _passwordController,
-                            obscureText: _obscurePassword,
+                            obscureText: !_isPasswordVisible,
                             style: const TextStyle(color: Colors.white),
                             decoration: InputDecoration(
                               hintText: "Password",
@@ -189,17 +189,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 borderSide: BorderSide.none,
                               ),
                               suffixIcon: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _isPasswordVisible = !_isPasswordVisible;
+                                  });
+                                },
                                 icon: Icon(
-                                  _obscurePassword
+                                  _isPasswordVisible
                                       ? Icons.visibility_off
                                       : Icons.visibility,
                                   color: Colors.white70,
                                 ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscurePassword = !_obscurePassword;
-                                  });
-                                },
                               ),
                             ),
                           ),
