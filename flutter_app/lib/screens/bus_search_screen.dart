@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/bus_info.dart';
@@ -14,6 +15,8 @@ class BusSearchScreen extends StatefulWidget {
 }
 
 class _BusSearchScreenState extends State<BusSearchScreen> {
+  static const double _nearbyBusRadiusKm = 2.0;
+
   bool _isFetchingLocation = false;
   bool _isSearchingBus = false;
   bool _isSearchingTrips = false;
@@ -26,6 +29,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
   final TextEditingController _busSearchController = TextEditingController();
 
   List<BusInfo> _trackedBuses = [];
+  List<String> _fromLocationSuggestions = [];
 
   @override
   void dispose() {
@@ -37,6 +41,44 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
 
   String _normalizeText(String value) {
     return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  List<String> _buildSearchCandidates(String input) {
+    final normalizedInput = _normalizeText(input);
+    final parts = input
+        .split(RegExp(r'[,/-]'))
+        .map((part) => _normalizeText(part))
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    final candidates = <String>[normalizedInput, ...parts];
+
+    // Include location-based hints if the user selected current location.
+    if (_fromController.text.trim() == input.trim() && input.isNotEmpty) {
+      candidates.addAll(
+        _fromLocationSuggestions.map((s) => _normalizeText(s)).where(
+              (s) => s.isNotEmpty,
+            ),
+      );
+    }
+
+    return candidates.toSet().toList();
+  }
+
+  int _findBestIndex(List<String> normalizedRoute, List<String> candidates) {
+    for (final candidate in candidates) {
+      final exactIndex = normalizedRoute.indexOf(candidate);
+      if (exactIndex != -1) return exactIndex;
+    }
+
+    for (final candidate in candidates) {
+      final containsIndex = normalizedRoute.indexWhere(
+        (point) => point.contains(candidate) || candidate.contains(point),
+      );
+      if (containsIndex != -1) return containsIndex;
+    }
+
+    return -1;
   }
 
   List<String> _buildRoutePoints({
@@ -65,6 +107,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
 
   BusInfo _mapBusFromFirestore(
     Map<String, dynamic> data, {
+    String? id,
     double distanceKm = 0,
   }) {
     final stops =
@@ -74,6 +117,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
         (data['busNumber'] as String?)?.trim().toUpperCase() ?? 'UNKNOWN';
 
     return BusInfo(
+      id: id,
       name: (data['busName'] as String?)?.trim().isNotEmpty == true
           ? (data['busName'] as String).trim()
           : (data['routeName'] as String?)?.trim().isNotEmpty == true
@@ -100,17 +144,63 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
         .map((point) => _normalizeText(point))
         .toList();
 
-    final normalizedFrom = _normalizeText(from);
-    final normalizedDestination = _normalizeText(destination);
+    final fromCandidates = _buildSearchCandidates(from);
+    final destinationCandidates = _buildSearchCandidates(destination);
 
-    final fromIndex = normalizedRoute.indexOf(normalizedFrom);
-    final destinationIndex = normalizedRoute.indexOf(normalizedDestination);
+    final fromIndex = _findBestIndex(normalizedRoute, fromCandidates);
+    final destinationIndex = _findBestIndex(
+      normalizedRoute,
+      destinationCandidates,
+    );
 
     if (fromIndex == -1 || destinationIndex == -1) {
       return false;
     }
 
     return fromIndex < destinationIndex;
+  }
+
+  Future<List<BusInfo>> _fetchBusesNearUserPosition(
+    Position userPosition,
+  ) async {
+    final busLocationsSnap =
+        await FirebaseFirestore.instance.collection('bus_locations').get();
+    if (busLocationsSnap.docs.isEmpty) return const [];
+
+    final busesCollection = FirebaseFirestore.instance.collection('buses');
+    final List<BusInfo> nearbyBuses = [];
+
+    for (final locationDoc in busLocationsSnap.docs) {
+      final locationData = locationDoc.data();
+      final lat = (locationData['lat'] as num?)?.toDouble();
+      final lng = (locationData['lng'] as num?)?.toDouble();
+
+      if (lat == null || lng == null) continue;
+
+      final distanceMeters = Geolocator.distanceBetween(
+        userPosition.latitude,
+        userPosition.longitude,
+        lat,
+        lng,
+      );
+      final distanceKm = distanceMeters / 1000.0;
+
+      if (distanceKm > _nearbyBusRadiusKm) continue;
+
+      final busDoc = await busesCollection.doc(locationDoc.id).get();
+      if (!busDoc.exists) continue;
+
+      nearbyBuses.add(
+        _mapBusFromFirestore(
+          busDoc.data()!,
+          id: busDoc.id,
+          distanceKm: distanceKm,
+        ),
+      );
+    }
+
+    nearbyBuses.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
+    return nearbyBuses;
   }
 
   Future<void> _fetchLocationAndNearbyBuses() async {
@@ -122,6 +212,14 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     });
 
     try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _errorMessage = 'Location services are turned off.';
+        });
+        return;
+      }
+
       LocationPermission permission = await Geolocator.checkPermission();
 
       if (permission == LocationPermission.denied) {
@@ -143,11 +241,69 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition();
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 12),
+          ),
+        );
+      } catch (_) {
+        position = await Geolocator.getLastKnownPosition();
+      }
+
+      if (position == null) {
+        setState(() {
+          _errorMessage = 'Could not get current location. Try again.';
+        });
+        return;
+      }
+
+      List<Placemark> placemarks = const [];
+      try {
+        placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+      } catch (_) {
+        // Reverse geocoding may fail on web or quota limits; fallback to lat/lng.
+      }
+
+      final placemark = placemarks.isNotEmpty ? placemarks.first : null;
+      final subLocality = (placemark?.subLocality ?? '').trim();
+      final locality = (placemark?.locality ?? '').trim();
+      final subAdminArea = (placemark?.subAdministrativeArea ?? '').trim();
+
+      final suggestions = <String>{
+        if (subLocality.isNotEmpty) subLocality,
+        if (locality.isNotEmpty) locality,
+        if (subAdminArea.isNotEmpty) subAdminArea,
+      }.toList();
+
+      final coordinatesText = '${position.latitude.toStringAsFixed(3)}, '
+          '${position.longitude.toStringAsFixed(3)}';
+      
+      final primaryLocationName = suggestions.isNotEmpty
+          ? suggestions.first
+          : coordinatesText;
 
       setState(() {
-        _locationLabel =
-            '${position.latitude.toStringAsFixed(3)}, ${position.longitude.toStringAsFixed(3)}';
+        _locationLabel = coordinatesText;
+        _fromController.text = primaryLocationName;
+        _fromLocationSuggestions = suggestions;
+        _errorMessage = null;
+      });
+
+      final nearbyBuses = await _fetchBusesNearUserPosition(position);
+      if (!mounted) return;
+
+      setState(() {
+        _trackedBuses = nearbyBuses;
+        if (nearbyBuses.isEmpty) {
+          _errorMessage =
+              'No live buses found near your location right now.';
+        }
       });
     } catch (e) {
       setState(() {
@@ -159,6 +315,74 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
           _isFetchingLocation = false;
         });
       }
+    }
+  }
+
+  Future<void> _useCurrentLocationAsFrom() async {
+    await _fetchLocationAndNearbyBuses();
+    if (!mounted) return;
+
+    if (_fromLocationSuggestions.isNotEmpty) {
+      setState(() {
+        _fromController.text = _fromLocationSuggestions.first;
+      });
+      return;
+    }
+
+    if ((_locationLabel ?? '').trim().isNotEmpty) {
+      setState(() {
+        _fromController.text = _locationLabel!.trim();
+      });
+    }
+
+    if (_fromController.text.trim().isNotEmpty &&
+        _destinationController.text.trim().isNotEmpty) {
+      await _searchTrips();
+    }
+  }
+
+  Future<void> _showFromSuggestions() async {
+    if (_isFetchingLocation) return;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF151515),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.my_location, color: Colors.white70),
+                  title: const Text(
+                    'Use your location',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () => Navigator.pop(context, 'use_location'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (action == 'use_location') {
+      await _useCurrentLocationAsFrom();
     }
   }
 
@@ -196,9 +420,10 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
       }
 
       final data = snap.docs.first.data();
+      final docId = snap.docs.first.id;
 
       setState(() {
-        _trackedBuses = [_mapBusFromFirestore(data)];
+        _trackedBuses = [_mapBusFromFirestore(data, id: docId)];
       });
     } catch (e) {
       setState(() {
@@ -260,7 +485,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
         );
 
         if (matches) {
-          matchedBuses.add(_mapBusFromFirestore(data));
+          matchedBuses.add(_mapBusFromFirestore(data, id: doc.id));
         }
       }
 
@@ -316,62 +541,16 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
                         ),
                       ],
                     ),
-                    Row(
-                      children: [
-                        InkWell(
-                          borderRadius: BorderRadius.circular(30),
-                          onTap: _fetchLocationAndNearbyBuses,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1E1E1E),
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.my_location,
-                                  color: Colors.white70,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 6),
-                                if (_isFetchingLocation)
-                                  const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white70,
-                                    ),
-                                  )
-                                else
-                                  Text(
-                                    _locationLabel ?? 'Use my location',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                              ],
-                            ),
+                    IconButton(
+                      icon: const Icon(Icons.settings, color: Colors.white70),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsScreen(),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        IconButton(
-                          icon: const Icon(Icons.settings, color: Colors.white70),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const SettingsScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -387,17 +566,70 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
                     children: [
                       TextField(
                         controller: _fromController,
+                        onTap: _showFromSuggestions,
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: 'From',
-                          hintStyle: TextStyle(color: Colors.white54),
+                          hintStyle: const TextStyle(color: Colors.white54),
                           border: InputBorder.none,
-                          icon: Icon(
+                          icon: const Icon(
                             Icons.circle_outlined,
                             color: Colors.white70,
                           ),
+                          suffixIcon: IconButton(
+                            onPressed: _isFetchingLocation
+                                ? null
+                                : _useCurrentLocationAsFrom,
+                            icon: _isFetchingLocation
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white70,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.my_location,
+                                    color: Colors.white70,
+                                  ),
+                            tooltip: 'Use current location',
+                          ),
                         ),
                       ),
+                      if (_fromLocationSuggestions.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _fromLocationSuggestions
+                                .map(
+                                  (suggestion) => ActionChip(
+                                    label: Text(suggestion),
+                                    avatar: const Icon(
+                                      Icons.place,
+                                      size: 16,
+                                      color: Colors.white70,
+                                    ),
+                                    labelStyle:
+                                        const TextStyle(color: Colors.white),
+                                    backgroundColor: const Color(0xFF2C2C2C),
+                                    side: const BorderSide(
+                                      color: Colors.white24,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _fromController.text = suggestion;
+                                      });
+                                    },
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ),
+                      ],
                       const Divider(color: Colors.white24),
                       TextField(
                         controller: _destinationController,
