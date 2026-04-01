@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../models/bus_info.dart';
 import 'bus_route_details_screen.dart';
+import 'settings_screen.dart';
 
 class BusSearchScreen extends StatefulWidget {
   const BusSearchScreen({super.key});
@@ -359,7 +360,17 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        const Icon(Icons.settings, color: Colors.white70),
+                        IconButton(
+                          icon: const Icon(Icons.settings, color: Colors.white70),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const SettingsScreen(),
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ],
