@@ -1,10 +1,12 @@
 'use strict';
 
 require('dotenv').config();
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
 const busRoutes  = require('./routes/busRoutes');
+const { initWebSocketServer } = require('./websocket');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -40,10 +42,17 @@ app.use((err, _req, res, _next) => {
 });
 
 // ---------------------------------------------------------------------------
-// Start
+// Server & WebSocket Setup
 // ---------------------------------------------------------------------------
-app.listen(PORT, () => {
+const server = http.createServer(app);
+const wss = initWebSocketServer(server);
+
+app.server = server;
+app.wss = wss;
+
+server.listen(PORT, () => {
   console.log(`[Server] Running on http://localhost:${PORT}`);
+  console.log(`[WebSocket] Live tracking ready on ws://localhost:${PORT}`);
 });
 
 module.exports = app;

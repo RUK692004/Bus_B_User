@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "main": "src/server.js",
-  
   "scripts": {
-  "start": "node src/server.js",
-  "dev": "nodemon src/server.js"
-},
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node test_ws.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -18,7 +18,8 @@
     "dotenv": "^18.0.6",
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
