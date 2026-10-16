@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'intro_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -32,7 +31,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                   onPressed: () async {
-                    await FirebaseAuth.instance.signOut();
+                    // Token clearance via FlutterSecureStorage will be wired in TICKET-202.
                     if (!context.mounted) return;
                     Navigator.pushAndRemoveUntil(
                       context,

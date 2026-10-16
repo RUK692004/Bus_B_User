@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -38,48 +37,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     if (!_formKey.currentState!.validate()) return;
 
+    // ignore: unused_local_variable - Prepared for TICKET-202
     final name = _nameController.text.trim();
+    // ignore: unused_local_variable - Prepared for TICKET-202
     final email = _emailController.text.trim();
+    // ignore: unused_local_variable - Prepared for TICKET-202
     final password = _passwordController.text;
 
     setState(() => _isLoading = true);
 
     try {
-      final auth = FirebaseAuth.instance;
-      final credential = await auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      if (credential.user != null && name.isNotEmpty) {
-        await credential.user!.updateDisplayName(name);
-      }
-
+      // Backend registration (/api/auth/signup) will be implemented in TICKET-202.
       if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
-    } on FirebaseAuthException catch (e) {
-      String message = 'Sign up failed. Please try again.';
-      switch (e.code) {
-        case 'email-already-in-use':
-          message = 'This email is already registered. Try logging in.';
-          break;
-        case 'invalid-email':
-          message = 'Please enter a valid email address.';
-          break;
-        case 'weak-password':
-          message = 'Password should be at least 6 characters.';
-          break;
-        case 'operation-not-allowed':
-          message = 'Email/password sign up is not enabled.';
-          break;
-      }
-      setState(() {
-        _errorMessage = message;
-        _isLoading = false;
-      });
     } catch (e) {
       setState(() {
         _errorMessage = 'Something went wrong. Please try again.';

@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
@@ -15,6 +14,7 @@ class BusSearchScreen extends StatefulWidget {
 }
 
 class _BusSearchScreenState extends State<BusSearchScreen> {
+  // ignore: unused_field - Preserved for backend API integration in TICKET-203.
   static const double _nearbyBusRadiusKm = 2.0;
 
   bool _isFetchingLocation = false;
@@ -105,6 +105,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     return routePoints;
   }
 
+  // ignore: unused_element - Preserved for backend API integration in TICKET-203.
   BusInfo _mapBusFromFirestore(
     Map<String, dynamic> data, {
     String? id,
@@ -131,6 +132,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     );
   }
 
+  // ignore: unused_element - Preserved for backend API integration in TICKET-203.
   bool _doesBusMatchRoute({
     required String from,
     required String destination,
@@ -163,44 +165,8 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
   Future<List<BusInfo>> _fetchBusesNearUserPosition(
     Position userPosition,
   ) async {
-    final busLocationsSnap =
-        await FirebaseFirestore.instance.collection('bus_locations').get();
-    if (busLocationsSnap.docs.isEmpty) return const [];
-
-    final busesCollection = FirebaseFirestore.instance.collection('buses');
-    final List<BusInfo> nearbyBuses = [];
-
-    for (final locationDoc in busLocationsSnap.docs) {
-      final locationData = locationDoc.data();
-      final lat = (locationData['lat'] as num?)?.toDouble();
-      final lng = (locationData['lng'] as num?)?.toDouble();
-
-      if (lat == null || lng == null) continue;
-
-      final distanceMeters = Geolocator.distanceBetween(
-        userPosition.latitude,
-        userPosition.longitude,
-        lat,
-        lng,
-      );
-      final distanceKm = distanceMeters / 1000.0;
-
-      if (distanceKm > _nearbyBusRadiusKm) continue;
-
-      final busDoc = await busesCollection.doc(locationDoc.id).get();
-      if (!busDoc.exists) continue;
-
-      nearbyBuses.add(
-        _mapBusFromFirestore(
-          busDoc.data()!,
-          id: busDoc.id,
-          distanceKm: distanceKm,
-        ),
-      );
-    }
-
-    nearbyBuses.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
-    return nearbyBuses;
+    // Backend integration (/api/buses/nearby) will be implemented in TICKET-203.
+    return const [];
   }
 
   Future<void> _fetchLocationAndNearbyBuses() async {
@@ -404,26 +370,9 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     });
 
     try {
-      final formattedQuery = query.toUpperCase();
-
-      final snap = await FirebaseFirestore.instance
-          .collection('buses')
-          .where('busNumber', isEqualTo: formattedQuery)
-          .limit(1)
-          .get();
-
-      if (snap.docs.isEmpty) {
-        setState(() {
-          _errorMessage = 'No bus found with that number.';
-        });
-        return;
-      }
-
-      final data = snap.docs.first.data();
-      final docId = snap.docs.first.id;
-
+      // Backend integration (/api/buses/search) will be implemented in TICKET-203.
       setState(() {
-        _trackedBuses = [_mapBusFromFirestore(data, id: docId)];
+        _errorMessage = 'No bus found with that number.';
       });
     } catch (e) {
       setState(() {
@@ -463,37 +412,9 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     });
 
     try {
-      final snap = await FirebaseFirestore.instance.collection('buses').get();
-
-      final List<BusInfo> matchedBuses = [];
-
-      for (final doc in snap.docs) {
-        final data = doc.data();
-
-        final stops =
-            (data['stops'] as List?)?.map((e) => e.toString()).toList() ?? [];
-
-        final start = data['start'] as String?;
-        final end = data['end'] as String?;
-
-        final matches = _doesBusMatchRoute(
-          from: from,
-          destination: destination,
-          start: start,
-          stops: stops,
-          end: end,
-        );
-
-        if (matches) {
-          matchedBuses.add(_mapBusFromFirestore(data, id: doc.id));
-        }
-      }
-
+      // Backend integration (/api/buses/trips) will be implemented in TICKET-203.
       setState(() {
-        _trackedBuses = matchedBuses;
-        if (matchedBuses.isEmpty) {
-          _errorMessage = 'No buses found for this route.';
-        }
+        _errorMessage = 'No buses found for this route.';
       });
     } catch (e) {
       setState(() {

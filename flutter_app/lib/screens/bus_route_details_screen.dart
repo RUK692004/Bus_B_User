@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
@@ -146,22 +145,9 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
       _routeStopMarkers = const {};
     });
 
-    Map<String, dynamic>? busDocData;
-    if (widget.bus.id != null) {
-      try {
-        final doc =
-            await FirebaseFirestore.instance.collection('buses').doc(widget.bus.id).get();
-        busDocData = doc.data();
-      } catch (_) {
-        // Fallback to geocoding.
-      }
-    }
-
-    final routeCoordinates = (busDocData?['routeCoordinates'] as List?)
-            ?.whereType<Map>()
-            .map((entry) => Map<String, dynamic>.from(entry))
-            .toList() ??
-        const <Map<String, dynamic>>[];
+    // Backend route coordinates (/api/buses/:id/route) will be integrated in TICKET-203.
+    // Geocoding fallback will be used until then.
+    final List<Map<String, dynamic>> routeCoordinates = const [];
 
     final points = <LatLng>[];
     final stopMarkers = <Marker>{};
@@ -401,11 +387,10 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
           const SizedBox(height: 8),
           SizedBox(
             height: 320,
-            child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('bus_locations')
-                  .doc(_busDocId)
-                  .snapshots(),
+            child: StreamBuilder<Map<String, dynamic>?>(
+              key: ValueKey(_busDocId),
+              // Live location streaming via WebSocket will be integrated in TICKET-204.
+              stream: const Stream<Map<String, dynamic>?>.empty(),
               builder: (context, snapshot) {
                 if (!_googleMapsLoaded) {
                   return Center(
@@ -436,7 +421,7 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final data = snapshot.data?.data();
+                final data = snapshot.data;
 
                 final lat = (data?['lat'] as num?)?.toDouble();
                 final lng = (data?['lng'] as num?)?.toDouble();

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'sign_up_screen.dart';
 import 'bus_search_screen.dart';
 
@@ -44,10 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // Backend authentication (/api/auth/login) will be implemented in TICKET-202.
       if (!mounted) return;
 
       Navigator.push(
@@ -56,25 +52,6 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (_) => const BusSearchScreen(),
         ),
       );
-    } on FirebaseAuthException catch (e) {
-      String message = 'Login failed. Please try again.';
-      switch (e.code) {
-        case 'user-not-found':
-        case 'invalid-credential':
-        case 'invalid-email':
-          message = 'Invalid email or password.';
-          break;
-        case 'user-disabled':
-          message = 'This account has been disabled.';
-          break;
-        case 'wrong-password':
-          message = 'Invalid email or password.';
-          break;
-      }
-      setState(() {
-        _errorMessage = message;
-        _isLoading = false;
-      });
     } catch (e) {
       setState(() {
         _errorMessage = 'Something went wrong. Please try again.';
