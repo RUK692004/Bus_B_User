@@ -5,6 +5,7 @@ import 'package:http/testing.dart';
 
 import 'package:flutter_app/services/api_client.dart';
 import 'package:flutter_app/services/bus_service.dart';
+import '../test_helpers.dart';
 
 void main() {
   group('BusService', () {
@@ -164,6 +165,96 @@ void main() {
       expect(trips.first.number, '335E');
       expect(trips.first.start, 'Majestic');
       expect(trips.first.stops, contains('Whitefield'));
+    });
+
+    test('getBusRoute fetches route coordinates for a bus', () async {
+      final mockHttp = MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/buses/bus-101/route');
+
+        return http.Response(
+          jsonEncode({
+            'route': [
+              {
+                'id': 1,
+                'bus_id': 'bus-101',
+                'seq': 1,
+                'name': 'Origin Stop',
+                'lat': 12.9716,
+                'lng': 77.5946,
+              },
+              {
+                'id': 2,
+                'bus_id': 'bus-101',
+                'seq': 2,
+                'name': 'Destination Stop',
+                'lat': 12.9800,
+                'lng': 77.6000,
+              },
+            ]
+          }),
+          200,
+        );
+      });
+
+      final apiClient = ApiClient(baseUrl: 'http://localhost:5000', client: mockHttp);
+      final busService = BusService(apiClient: apiClient);
+
+      final route = await busService.getBusRoute('bus-101');
+      expect(route.length, 2);
+      expect(route[0]['name'], 'Origin Stop');
+      expect(route[0]['lat'], 12.9716);
+      expect(route[1]['name'], 'Destination Stop');
+      expect(route[1]['lng'], 77.6000);
+    });
+
+    test('subscribeBusLocation connects, subscribes, emits location updates, and unsubscribes on cancel', () async {
+      final fakeChannel = FakeWebSocketChannel();
+      final busService = BusService();
+
+      final stream = busService.subscribeBusLocation(
+        busId: 'bus-42',
+        channel: fakeChannel,
+      );
+
+      final List<Map<String, dynamic>> receivedLocations = [];
+      final sub = stream.listen(receivedLocations.add);
+
+      // Verify that the subscription message was sent to the sink
+      final sentMessages = <Map<String, dynamic>>[];
+      fakeChannel.outgoing.stream.listen((data) {
+        sentMessages.add(jsonDecode(data.toString()));
+      });
+
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(sentMessages.length, 1);
+      expect(sentMessages.first['type'], 'subscribe');
+      expect(sentMessages.first['busId'], 'bus-42');
+
+      // Server sends connected greeting and subscribed message (should be ignored by stream)
+      fakeChannel.incoming.add(jsonEncode({'type': 'connected', 'message': 'Welcome'}));
+      fakeChannel.incoming.add(jsonEncode({'type': 'subscribed', 'busId': 'bus-42'}));
+
+      // Server sends location update
+      fakeChannel.incoming.add(jsonEncode({
+        'type': 'location_update',
+        'busId': 'bus-42',
+        'lat': 12.9500,
+        'lng': 77.5800,
+        'heading': 180,
+      }));
+
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(receivedLocations.length, 1);
+      expect(receivedLocations.first['lat'], 12.9500);
+      expect(receivedLocations.first['lng'], 77.5800);
+      expect(receivedLocations.first['heading'], 180);
+
+      // Cancel stream subscription -> sends unsubscribe message
+      await sub.cancel();
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(sentMessages.any((msg) => msg['type'] == 'unsubscribe' && msg['busId'] == 'bus-42'), true);
     });
   });
 }

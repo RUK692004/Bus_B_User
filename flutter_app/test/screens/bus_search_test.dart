@@ -165,7 +165,8 @@ void main() {
 
       // Tap the bus card to verify navigation to route details
       await tester.tap(find.text('Airport Flyer'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       expect(find.byType(BusRouteDetailsScreen), findsOneWidget);
     });

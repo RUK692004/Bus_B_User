@@ -3,14 +3,23 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/bus_info.dart';
+import '../services/bus_service.dart';
 import '../utils/google_maps_availability.dart';
 
 class BusRouteDetailsScreen extends StatefulWidget {
   final BusInfo bus;
+  final BusService? busService;
+  final WebSocketChannel? wsChannel;
 
-  const BusRouteDetailsScreen({super.key, required this.bus});
+  const BusRouteDetailsScreen({
+    super.key,
+    required this.bus,
+    this.busService,
+    this.wsChannel,
+  });
 
   @override
   State<BusRouteDetailsScreen> createState() =>
@@ -35,10 +44,18 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
   late final String _busDocId;
   LatLng? _latestBusLatLng;
 
+  late final BusService _busService;
+  Stream<Map<String, dynamic>?>? _locationStream;
+
   @override
   void initState() {
     super.initState();
+    _busService = widget.busService ?? BusService();
     _busDocId = widget.bus.id ?? widget.bus.number;
+    _locationStream = _busService.subscribeBusLocation(
+      busId: _busDocId,
+      channel: widget.wsChannel,
+    );
     _googleMapsLoaded = isGoogleMapsLoaded();
     if (!_googleMapsLoaded) {
       // Wait briefly for the JS SDK to load on the web.
@@ -145,9 +162,16 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
       _routeStopMarkers = const {};
     });
 
-    // Backend route coordinates (/api/buses/:id/route) will be integrated in TICKET-203.
-    // Geocoding fallback will be used until then.
-    final List<Map<String, dynamic>> routeCoordinates = const [];
+    // Fetch saved route coordinates from backend REST API (/api/buses/:id/route)
+    List<Map<String, dynamic>> routeCoordinates = const [];
+    final busId = widget.bus.id;
+    if (busId != null && busId.isNotEmpty) {
+      try {
+        routeCoordinates = await _busService.getBusRoute(busId);
+      } catch (_) {
+        routeCoordinates = const [];
+      }
+    }
 
     final points = <LatLng>[];
     final stopMarkers = <Marker>{};
@@ -389,8 +413,7 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
             height: 320,
             child: StreamBuilder<Map<String, dynamic>?>(
               key: ValueKey(_busDocId),
-              // Live location streaming via WebSocket will be integrated in TICKET-204.
-              stream: const Stream<Map<String, dynamic>?>.empty(),
+              stream: _locationStream,
               builder: (context, snapshot) {
                 if (!_googleMapsLoaded) {
                   return Center(
