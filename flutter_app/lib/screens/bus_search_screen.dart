@@ -3,19 +3,24 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/bus_info.dart';
+import '../services/api_client.dart';
+import '../services/bus_service.dart';
 import 'bus_route_details_screen.dart';
 import 'settings_screen.dart';
 
 class BusSearchScreen extends StatefulWidget {
-  const BusSearchScreen({super.key});
+  final BusService? busService;
+
+  const BusSearchScreen({super.key, this.busService});
 
   @override
   State<BusSearchScreen> createState() => _BusSearchScreenState();
 }
 
 class _BusSearchScreenState extends State<BusSearchScreen> {
-  // ignore: unused_field - Preserved for backend API integration in TICKET-203.
   static const double _nearbyBusRadiusKm = 2.0;
+
+  BusService get _busService => widget.busService ?? BusService();
 
   bool _isFetchingLocation = false;
   bool _isSearchingBus = false;
@@ -165,8 +170,16 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
   Future<List<BusInfo>> _fetchBusesNearUserPosition(
     Position userPosition,
   ) async {
-    // Backend integration (/api/buses/nearby) will be implemented in TICKET-203.
-    return const [];
+    try {
+      final radiusMeters = _nearbyBusRadiusKm * 1000.0;
+      return await _busService.getNearbyBuses(
+        lat: userPosition.latitude,
+        lng: userPosition.longitude,
+        radiusMeters: radiusMeters,
+      );
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> _fetchLocationAndNearbyBuses() async {
@@ -370,12 +383,32 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     });
 
     try {
-      // Backend integration (/api/buses/search) will be implemented in TICKET-203.
+      final bus = await _busService.searchBusByNumber(query);
+      if (!mounted) return;
+
       setState(() {
-        _errorMessage = 'No bus found with that number.';
+        if (bus != null) {
+          _trackedBuses = [bus];
+          _errorMessage = null;
+        } else {
+          _trackedBuses = [];
+          _errorMessage = 'No bus found with that number.';
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _trackedBuses = [];
+        if (e.statusCode == 404) {
+          _errorMessage = 'No bus found with that number.';
+        } else {
+          _errorMessage = e.message;
+        }
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
+        _trackedBuses = [];
         _errorMessage = 'Failed to fetch bus details. Please try again.';
       });
     } finally {
@@ -412,12 +445,29 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     });
 
     try {
-      // Backend integration (/api/buses/trips) will be implemented in TICKET-203.
+      final matchedBuses = await _busService.searchTrips(
+        from: from,
+        to: destination,
+      );
+
+      if (!mounted) return;
+
       setState(() {
-        _errorMessage = 'No buses found for this route.';
+        _trackedBuses = matchedBuses;
+        if (matchedBuses.isEmpty) {
+          _errorMessage = 'No buses found for this route.';
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _trackedBuses = [];
+        _errorMessage = e.message;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
+        _trackedBuses = [];
         _errorMessage = 'Failed to search trips. Please try again.';
       });
     } finally {

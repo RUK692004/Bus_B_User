@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import 'sign_up_screen.dart';
 import 'bus_search_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final AuthService? authService;
+
+  const LoginScreen({super.key, this.authService});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -12,6 +15,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
+  AuthService get _authService => widget.authService ?? AuthService();
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -43,7 +48,11 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Backend authentication (/api/auth/login) will be implemented in TICKET-202.
+      await _authService.login(
+        email: email,
+        password: password,
+      );
+
       if (!mounted) return;
 
       Navigator.push(
@@ -52,6 +61,11 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (_) => const BusSearchScreen(),
         ),
       );
+    } on ApiException catch (e) {
+      setState(() {
+        _errorMessage = e.message;
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() {
         _errorMessage = 'Something went wrong. Please try again.';

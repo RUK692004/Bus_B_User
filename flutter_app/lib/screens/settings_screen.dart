@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'intro_screen.dart';
+import '../services/auth_service.dart';
+import 'login_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+  final AuthService? authService;
+
+  const SettingsScreen({super.key, this.authService});
 
   @override
   Widget build(BuildContext context) {
@@ -31,12 +34,13 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                   onPressed: () async {
-                    // Token clearance via FlutterSecureStorage will be wired in TICKET-202.
+                    final service = authService ?? AuthService();
+                    await service.logout();
                     if (!context.mounted) return;
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const IntroScreen(),
+                        builder: (_) => const LoginScreen(),
                       ),
                       (route) => false,
                     );

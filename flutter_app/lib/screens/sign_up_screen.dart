@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import 'login_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  final AuthService? authService;
+
+  const SignUpScreen({super.key, this.authService});
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -15,6 +18,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
+
+  AuthService get _authService => widget.authService ?? AuthService();
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -37,22 +42,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     if (!_formKey.currentState!.validate()) return;
 
-    // ignore: unused_local_variable - Prepared for TICKET-202
     final name = _nameController.text.trim();
-    // ignore: unused_local_variable - Prepared for TICKET-202
     final email = _emailController.text.trim();
-    // ignore: unused_local_variable - Prepared for TICKET-202
     final password = _passwordController.text;
 
     setState(() => _isLoading = true);
 
     try {
-      // Backend registration (/api/auth/signup) will be implemented in TICKET-202.
+      await _authService.signUp(
+        name: name,
+        email: email,
+        password: password,
+      );
+
       if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
+    } on ApiException catch (e) {
+      setState(() {
+        _errorMessage = e.message;
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() {
         _errorMessage = 'Something went wrong. Please try again.';
