@@ -1,15 +1,9 @@
-// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:js' as js;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 bool isGoogleMapsLoaded() {
-  // `window.google` should exist after the Google Maps JS SDK is loaded.
-  final google = js.context['google'];
+  // `window.google.maps` exists once the Google Maps JS SDK has loaded.
+  final google = globalContext.getProperty<JSObject?>('google'.toJS);
   if (google == null) return false;
-
-  try {
-    return google['maps'] != null;
-  } catch (_) {
-    return false;
-  }
+  return google.getProperty<JSAny?>('maps'.toJS) != null;
 }
-

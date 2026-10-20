@@ -15,6 +15,15 @@ const busSubscribers = new Map();
 // Subscribers listening to all buses: Set<WebSocket>
 const allBusSubscribers = new Set();
 
+// Last persistence error message, used to avoid logging the same failure on every update.
+let lastPersistError = null;
+
+const HEARTBEAT_INTERVAL_MS = 30000;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 /**
  * Safely send a JSON message to a WebSocket client.
  * @param {WebSocket} ws
@@ -30,8 +39,46 @@ function sendJson(ws, data) {
   }
 }
 
-// Last persistence error message, used to avoid logging the same failure on every update.
-let lastPersistError = null;
+function sendError(ws, message) {
+  sendJson(ws, { type: 'error', message });
+}
+
+/** True when a subscription target means "every bus". */
+function isAllBuses(target) {
+  return target === '*' || target === 'all';
+}
+
+/** Reads the bus id from a message, accepting both naming styles. */
+function busIdFrom(msg) {
+  return msg.busId || msg.bus_id;
+}
+
+/**
+ * Builds the outgoing `location_update` payload. Each field is repeated under
+ * both naming styles so clients can read either.
+ * @param {string|number} busId
+ * @param {{ lat: number, lng: number, heading?: number, speed?: number, updatedAt?: string }} location
+ */
+function locationPayload(busId, location) {
+  const id = String(busId);
+  return {
+    type: 'location_update',
+    busId: id,
+    bus_id: id,
+    lat: location.lat,
+    latitude: location.lat,
+    lng: location.lng,
+    longitude: location.lng,
+    heading: location.heading ?? 0,
+    speed: location.speed ?? 0,
+    updatedAt: location.updatedAt || new Date().toISOString(),
+  };
+}
+
+/** Parses a numeric field that may arrive as a number or a numeric string. */
+function toNumber(value) {
+  return typeof value === 'number' ? value : parseFloat(value);
+}
 
 /**
  * Helper to update database in background (best-effort, non-blocking).
@@ -70,37 +117,240 @@ async function persistLocationToDb(busId, lat, lng, heading) {
  * @param {object} locationData
  */
 function broadcastLocation(busId, locationData) {
-  const payload = {
-    type: 'location_update',
-    busId: String(busId),
-    bus_id: String(busId),
-    lat: locationData.lat,
-    latitude: locationData.lat,
-    lng: locationData.lng,
-    longitude: locationData.lng,
-    heading: locationData.heading ?? 0,
-    speed: locationData.speed ?? 0,
-    updatedAt: locationData.updatedAt || new Date().toISOString(),
-  };
+  const jsonString = JSON.stringify(locationPayload(busId, locationData));
+  const recipients = [...(busSubscribers.get(String(busId)) || []), ...allBusSubscribers];
 
-  const jsonString = JSON.stringify(payload);
-
-  // 1. Send to subscribers of this specific bus
-  const subs = busSubscribers.get(String(busId));
-  if (subs) {
-    for (const client of subs) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(jsonString);
-      }
-    }
-  }
-
-  // 2. Send to global subscribers
-  for (const client of allBusSubscribers) {
+  for (const client of recipients) {
     if (client.readyState === WebSocket.OPEN) {
       client.send(jsonString);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Subscription bookkeeping
+// ---------------------------------------------------------------------------
+
+function registerDriver(ws, busId) {
+  ws.clientInfo.role = 'driver';
+  ws.clientInfo.registeredBusId = String(busId);
+  console.log(`[WebSocket] Driver registered for bus ${busId}`);
+}
+
+function subscribeToAll(ws) {
+  ws.clientInfo.role = 'user';
+  allBusSubscribers.add(ws);
+}
+
+function subscribeToBus(ws, busId) {
+  ws.clientInfo.role = 'user';
+  ws.clientInfo.subscribedBuses.add(busId);
+  if (!busSubscribers.has(busId)) {
+    busSubscribers.set(busId, new Set());
+  }
+  busSubscribers.get(busId).add(ws);
+}
+
+function unsubscribeFromBus(ws, busId) {
+  ws.clientInfo.subscribedBuses.delete(busId);
+  const subs = busSubscribers.get(busId);
+  if (subs) {
+    subs.delete(ws);
+    if (subs.size === 0) {
+      busSubscribers.delete(busId);
+    }
+  }
+}
+
+function unsubscribeFromEverything(ws) {
+  allBusSubscribers.delete(ws);
+  for (const busId of [...ws.clientInfo.subscribedBuses]) {
+    unsubscribeFromBus(ws, busId);
+  }
+}
+
+/** Sends the cached location for a bus, if there is one. Returns whether it did. */
+function replayCachedLocation(ws, busId) {
+  const cached = busLocations.get(busId);
+  if (!cached) return false;
+  sendJson(ws, locationPayload(busId, cached));
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Message handlers
+// ---------------------------------------------------------------------------
+
+function handleRegisterDriver(ws, msg) {
+  const busId = busIdFrom(msg);
+  if (!busId) {
+    return sendError(ws, 'Missing busId in registration.');
+  }
+  registerDriver(ws, busId);
+  sendJson(ws, {
+    type: 'driver_registered',
+    busId: String(busId),
+    message: `Driver registered for bus ${busId}`,
+  });
+}
+
+function handleLocationUpdate(ws, msg) {
+  const busId = busIdFrom(msg) || ws.clientInfo.registeredBusId;
+  const lat = typeof msg.lat === 'number' ? msg.lat : parseFloat(msg.latitude);
+  const lng = typeof msg.lng === 'number' ? msg.lng : parseFloat(msg.longitude);
+  const heading = toNumber(msg.heading) || 0;
+  const speed = toNumber(msg.speed) || 0;
+
+  if (!busId || isNaN(lat) || isNaN(lng)) {
+    return sendError(
+      ws,
+      'Invalid location data. busId, lat (or latitude), and lng (or longitude) are required numbers.'
+    );
+  }
+
+  const updatedAt = msg.timestamp || new Date().toISOString();
+  const locationRecord = { busId: String(busId), lat, lng, heading, speed, updatedAt };
+
+  busLocations.set(String(busId), locationRecord);
+  broadcastLocation(busId, locationRecord);
+  persistLocationToDb(busId, lat, lng, heading); // non-blocking
+
+  sendJson(ws, { type: 'location_ack', busId: String(busId), updatedAt });
+}
+
+function handleSubscribe(ws, msg) {
+  const busId = busIdFrom(msg);
+  if (!busId) {
+    return sendError(ws, 'Missing busId in subscribe request.');
+  }
+
+  if (isAllBuses(busId)) {
+    return handleSubscribeAll(ws);
+  }
+
+  const idStr = String(busId);
+  subscribeToBus(ws, idStr);
+  sendJson(ws, {
+    type: 'subscribed',
+    busId: idStr,
+    message: `Subscribed to location updates for bus ${idStr}`,
+  });
+  replayCachedLocation(ws, idStr);
+}
+
+function handleSubscribeAll(ws) {
+  subscribeToAll(ws);
+  sendJson(ws, {
+    type: 'subscribed',
+    busId: '*',
+    message: 'Subscribed to location updates for all buses',
+  });
+}
+
+function handleUnsubscribe(ws, msg) {
+  const busId = busIdFrom(msg);
+
+  if (!busId || isAllBuses(busId)) {
+    unsubscribeFromEverything(ws);
+    return sendJson(ws, {
+      type: 'unsubscribed',
+      busId: '*',
+      message: 'Unsubscribed from all buses',
+    });
+  }
+
+  const idStr = String(busId);
+  unsubscribeFromBus(ws, idStr);
+  sendJson(ws, {
+    type: 'unsubscribed',
+    busId: idStr,
+    message: `Unsubscribed from bus ${idStr}`,
+  });
+}
+
+function handleGetLocation(ws, msg) {
+  const busId = busIdFrom(msg);
+  if (!busId) {
+    return sendError(ws, 'Missing busId in get_location request.');
+  }
+
+  const idStr = String(busId);
+  if (!replayCachedLocation(ws, idStr)) {
+    sendJson(ws, {
+      type: 'not_found',
+      busId: idStr,
+      message: `No active location found for bus ${idStr}`,
+    });
+  }
+}
+
+function handlePing(ws) {
+  sendJson(ws, { type: 'pong', timestamp: new Date().toISOString() });
+}
+
+// Message type (and its accepted aliases) -> handler.
+const messageHandlers = {
+  register_driver: handleRegisterDriver,
+  driver_register: handleRegisterDriver,
+  location_update: handleLocationUpdate,
+  update_location: handleLocationUpdate,
+  location: handleLocationUpdate,
+  subscribe: handleSubscribe,
+  sub: handleSubscribe,
+  subscribe_all: handleSubscribeAll,
+  unsubscribe: handleUnsubscribe,
+  unsub: handleUnsubscribe,
+  get_location: handleGetLocation,
+  ping: handlePing,
+};
+
+// ---------------------------------------------------------------------------
+// Connection lifecycle
+// ---------------------------------------------------------------------------
+
+/**
+ * Applies driver registration / subscriptions passed in the connection URL,
+ * e.g. `?role=driver&busId=…`, `?role=user&busId=…`, `?subscribe=*`.
+ */
+function applyConnectionQuery(ws, req) {
+  const { role, busId, bus_id, subscribe } = url.parse(req.url, true).query;
+  const queryBusId = busId || bus_id;
+
+  if (role === 'driver' && queryBusId) {
+    registerDriver(ws, queryBusId);
+  }
+
+  const target = subscribe || (role === 'user' ? queryBusId : null);
+  if (!target) return;
+
+  if (isAllBuses(target)) {
+    subscribeToAll(ws);
+    console.log('[WebSocket] User subscribed to all buses');
+  } else {
+    const idStr = String(target);
+    subscribeToBus(ws, idStr);
+    console.log(`[WebSocket] User subscribed to bus ${idStr}`);
+    replayCachedLocation(ws, idStr);
+  }
+}
+
+function handleMessage(ws, rawMessage) {
+  let msg;
+  try {
+    msg = JSON.parse(rawMessage.toString());
+  } catch {
+    return sendError(ws, 'Invalid JSON payload. Messages must be valid JSON.');
+  }
+  if (!msg || typeof msg !== 'object') {
+    return sendError(ws, 'Invalid message. Messages must be JSON objects.');
+  }
+
+  const action = msg.type || msg.action || msg.event;
+  const handler = Object.hasOwn(messageHandlers, action) ? messageHandlers[action] : null;
+  if (!handler) {
+    return sendError(ws, `Unknown message type: "${action}"`);
+  }
+  handler(ws, msg);
 }
 
 /**
@@ -120,310 +370,23 @@ function handleConnection(ws, req) {
     ws.isAlive = true;
   });
 
-  // Parse URL query params if any
   try {
-    const parsedUrl = url.parse(req.url, true);
-    const { role, busId, bus_id, subscribe } = parsedUrl.query;
-
-    if (role === 'driver') {
-      const bId = busId || bus_id;
-      if (bId) {
-        ws.clientInfo.role = 'driver';
-        ws.clientInfo.registeredBusId = String(bId);
-        console.log(`[WebSocket] Driver registered for bus ${bId}`);
-      }
-    }
-
-    const subTarget = subscribe || (role === 'user' ? (busId || bus_id) : null);
-    if (subTarget) {
-      ws.clientInfo.role = 'user';
-      if (subTarget === '*' || subTarget === 'all') {
-        allBusSubscribers.add(ws);
-        console.log('[WebSocket] User subscribed to all buses');
-      } else {
-        const idStr = String(subTarget);
-        ws.clientInfo.subscribedBuses.add(idStr);
-        if (!busSubscribers.has(idStr)) {
-          busSubscribers.set(idStr, new Set());
-        }
-        busSubscribers.get(idStr).add(ws);
-        console.log(`[WebSocket] User subscribed to bus ${idStr}`);
-
-        // Replay cached location if available
-        if (busLocations.has(idStr)) {
-          const cached = busLocations.get(idStr);
-          sendJson(ws, {
-            type: 'location_update',
-            busId: idStr,
-            bus_id: idStr,
-            lat: cached.lat,
-            latitude: cached.lat,
-            lng: cached.lng,
-            longitude: cached.lng,
-            heading: cached.heading ?? 0,
-            speed: cached.speed ?? 0,
-            updatedAt: cached.updatedAt,
-          });
-        }
-      }
-    }
+    applyConnectionQuery(ws, req);
   } catch (err) {
     console.error('[WebSocket] Error parsing initial connection query:', err.message);
   }
 
-  // Welcome message
   sendJson(ws, {
     type: 'connected',
     message: 'Connected to BusBee Real-Time Location WebSocket Server',
   });
 
-  // Handle incoming messages
-  ws.on('message', async (rawMessage) => {
-    let msg;
-    try {
-      msg = JSON.parse(rawMessage.toString());
-    } catch {
-      return sendJson(ws, {
-        type: 'error',
-        message: 'Invalid JSON payload. Messages must be valid JSON.',
-      });
-    }
+  ws.on('message', (rawMessage) => handleMessage(ws, rawMessage));
 
-    const action = msg.type || msg.action || msg.event;
-
-    switch (action) {
-      // ---------------------------------------------------------------------
-      // Driver registration
-      // ---------------------------------------------------------------------
-      case 'register_driver':
-      case 'driver_register': {
-        const busId = msg.busId || msg.bus_id;
-        if (!busId) {
-          return sendJson(ws, { type: 'error', message: 'Missing busId in registration.' });
-        }
-        ws.clientInfo.role = 'driver';
-        ws.clientInfo.registeredBusId = String(busId);
-        console.log(`[WebSocket] Driver registered for bus ${busId}`);
-        return sendJson(ws, {
-          type: 'driver_registered',
-          busId: String(busId),
-          message: `Driver registered for bus ${busId}`,
-        });
-      }
-
-      // ---------------------------------------------------------------------
-      // Location update from driver
-      // ---------------------------------------------------------------------
-      case 'location_update':
-      case 'update_location':
-      case 'location': {
-        const busId = msg.busId || msg.bus_id || ws.clientInfo.registeredBusId;
-        const lat = typeof msg.lat === 'number' ? msg.lat : parseFloat(msg.latitude);
-        const lng = typeof msg.lng === 'number' ? msg.lng : parseFloat(msg.longitude);
-        const heading = typeof msg.heading === 'number' ? msg.heading : parseFloat(msg.heading) || 0;
-        const speed = typeof msg.speed === 'number' ? msg.speed : parseFloat(msg.speed) || 0;
-
-        if (!busId || isNaN(lat) || isNaN(lng)) {
-          return sendJson(ws, {
-            type: 'error',
-            message: 'Invalid location data. busId, lat (or latitude), and lng (or longitude) are required numbers.',
-          });
-        }
-
-        const updatedAt = msg.timestamp || new Date().toISOString();
-        const locationRecord = {
-          busId: String(busId),
-          lat,
-          lng,
-          heading,
-          speed,
-          updatedAt,
-        };
-
-        // Cache in memory
-        busLocations.set(String(busId), locationRecord);
-
-        // Broadcast to user subscribers
-        broadcastLocation(busId, locationRecord);
-
-        // Async persist to DB (non-blocking)
-        persistLocationToDb(busId, lat, lng, heading);
-
-        // Acknowledge driver
-        return sendJson(ws, {
-          type: 'location_ack',
-          busId: String(busId),
-          updatedAt,
-        });
-      }
-
-      // ---------------------------------------------------------------------
-      // User subscription to a bus
-      // ---------------------------------------------------------------------
-      case 'subscribe':
-      case 'sub': {
-        const busId = msg.busId || msg.bus_id;
-        if (!busId) {
-          return sendJson(ws, { type: 'error', message: 'Missing busId in subscribe request.' });
-        }
-
-        ws.clientInfo.role = 'user';
-
-        if (busId === '*' || busId === 'all') {
-          allBusSubscribers.add(ws);
-          sendJson(ws, {
-            type: 'subscribed',
-            busId: '*',
-            message: 'Subscribed to location updates for all buses',
-          });
-        } else {
-          const idStr = String(busId);
-          ws.clientInfo.subscribedBuses.add(idStr);
-          if (!busSubscribers.has(idStr)) {
-            busSubscribers.set(idStr, new Set());
-          }
-          busSubscribers.get(idStr).add(ws);
-
-          sendJson(ws, {
-            type: 'subscribed',
-            busId: idStr,
-            message: `Subscribed to location updates for bus ${idStr}`,
-          });
-
-          // Replay cached location if available
-          if (busLocations.has(idStr)) {
-            const cached = busLocations.get(idStr);
-            sendJson(ws, {
-              type: 'location_update',
-              busId: idStr,
-              bus_id: idStr,
-              lat: cached.lat,
-              latitude: cached.lat,
-              lng: cached.lng,
-              longitude: cached.lng,
-              heading: cached.heading ?? 0,
-              speed: cached.speed ?? 0,
-              updatedAt: cached.updatedAt,
-            });
-          }
-        }
-        return;
-      }
-
-      // ---------------------------------------------------------------------
-      // User subscription to all buses
-      // ---------------------------------------------------------------------
-      case 'subscribe_all': {
-        ws.clientInfo.role = 'user';
-        allBusSubscribers.add(ws);
-        return sendJson(ws, {
-          type: 'subscribed',
-          busId: '*',
-          message: 'Subscribed to location updates for all buses',
-        });
-      }
-
-      // ---------------------------------------------------------------------
-      // User unsubscription
-      // ---------------------------------------------------------------------
-      case 'unsubscribe':
-      case 'unsub': {
-        const busId = msg.busId || msg.bus_id;
-        if (!busId || busId === '*' || busId === 'all') {
-          allBusSubscribers.delete(ws);
-          for (const bId of ws.clientInfo.subscribedBuses) {
-            const subs = busSubscribers.get(bId);
-            if (subs) {
-              subs.delete(ws);
-            }
-          }
-          ws.clientInfo.subscribedBuses.clear();
-          return sendJson(ws, {
-            type: 'unsubscribed',
-            busId: '*',
-            message: 'Unsubscribed from all buses',
-          });
-        }
-
-        const idStr = String(busId);
-        ws.clientInfo.subscribedBuses.delete(idStr);
-        const subs = busSubscribers.get(idStr);
-        if (subs) {
-          subs.delete(ws);
-        }
-        return sendJson(ws, {
-          type: 'unsubscribed',
-          busId: idStr,
-          message: `Unsubscribed from bus ${idStr}`,
-        });
-      }
-
-      // ---------------------------------------------------------------------
-      // Get current location (on-demand snapshot)
-      // ---------------------------------------------------------------------
-      case 'get_location': {
-        const busId = msg.busId || msg.bus_id;
-        if (!busId) {
-          return sendJson(ws, { type: 'error', message: 'Missing busId in get_location request.' });
-        }
-        const idStr = String(busId);
-        if (busLocations.has(idStr)) {
-          const cached = busLocations.get(idStr);
-          return sendJson(ws, {
-            type: 'location_update',
-            busId: idStr,
-            bus_id: idStr,
-            lat: cached.lat,
-            latitude: cached.lat,
-            lng: cached.lng,
-            longitude: cached.lng,
-            heading: cached.heading ?? 0,
-            speed: cached.speed ?? 0,
-            updatedAt: cached.updatedAt,
-          });
-        }
-        return sendJson(ws, {
-          type: 'not_found',
-          busId: idStr,
-          message: `No active location found for bus ${idStr}`,
-        });
-      }
-
-      // ---------------------------------------------------------------------
-      // Ping / Pong
-      // ---------------------------------------------------------------------
-      case 'ping': {
-        return sendJson(ws, { type: 'pong', timestamp: new Date().toISOString() });
-      }
-
-      default: {
-        return sendJson(ws, {
-          type: 'error',
-          message: `Unknown message type: "${action}"`,
-        });
-      }
-    }
-  });
-
-  // Handle client disconnect and cleanup
-  const cleanup = () => {
-    allBusSubscribers.delete(ws);
-    for (const busId of ws.clientInfo.subscribedBuses) {
-      const subs = busSubscribers.get(busId);
-      if (subs) {
-        subs.delete(ws);
-        if (subs.size === 0) {
-          busSubscribers.delete(busId);
-        }
-      }
-    }
-    ws.clientInfo.subscribedBuses.clear();
-  };
-
-  ws.on('close', cleanup);
+  ws.on('close', () => unsubscribeFromEverything(ws));
   ws.on('error', (err) => {
     console.error('[WebSocket] Socket error:', err.message);
-    cleanup();
+    unsubscribeFromEverything(ws);
   });
 }
 
@@ -435,9 +398,7 @@ function handleConnection(ws, req) {
 function initWebSocketServer(server) {
   const wss = new WebSocketServer({ server });
 
-  wss.on('connection', (ws, req) => {
-    handleConnection(ws, req);
-  });
+  wss.on('connection', handleConnection);
 
   // Heartbeat ping interval to detect stale/dead connections
   const interval = setInterval(() => {
@@ -449,7 +410,7 @@ function initWebSocketServer(server) {
       ws.isAlive = false;
       ws.ping();
     }
-  }, 30000);
+  }, HEARTBEAT_INTERVAL_MS);
 
   wss.on('close', () => {
     clearInterval(interval);

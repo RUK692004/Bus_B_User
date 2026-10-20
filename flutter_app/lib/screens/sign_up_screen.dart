@@ -19,7 +19,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _confirmPasswordController =
       TextEditingController();
 
-  AuthService get _authService => widget.authService ?? AuthService();
+  late final AuthService _authService = widget.authService ?? AuthService();
 
   bool _isLoading = false;
   String? _errorMessage;

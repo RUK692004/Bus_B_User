@@ -8,6 +8,8 @@ import 'package:flutter_app/screens/bus_route_details_screen.dart';
 import 'package:flutter_app/screens/bus_search_screen.dart';
 import 'package:flutter_app/services/api_client.dart';
 import 'package:flutter_app/services/bus_service.dart';
+import 'package:flutter_app/services/location_service.dart';
+import '../test_helpers.dart';
 
 void main() {
   group('BusSearchScreen Widget Tests', () {
@@ -195,6 +197,85 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No bus found with that number.'), findsOneWidget);
+    });
+
+    group('use current location', () {
+      const location = CurrentLocation(
+        latitude: 10.0261,
+        longitude: 76.3087,
+        placeNames: ['Edappally', 'Kochi'],
+      );
+
+      testWidgets('fills From, shows suggestions and lists nearby buses with distance', (tester) async {
+        Uri? nearbyRequest;
+        final mockHttp = MockClient((request) async {
+          nearbyRequest = request.url;
+          return http.Response(
+            jsonEncode({
+              'buses': [
+                {'id': 'bus-7', 'bus_number': '7', 'bus_name': 'Nearby Seven', 'distance_km': '1.17'},
+              ]
+            }),
+            200,
+          );
+        });
+        final busService = BusService(
+          apiClient: ApiClient(baseUrl: 'http://localhost:5000', client: mockHttp),
+        );
+
+        await tester.pumpWidget(MaterialApp(
+          home: BusSearchScreen(
+            busService: busService,
+            locationService: const FakeLocationService(location: location),
+          ),
+        ));
+
+        await tester.tap(find.byTooltip('Use current location'));
+        await tester.pumpAndSettle();
+
+        expect(nearbyRequest!.queryParameters['lat'], '10.0261');
+        expect(nearbyRequest!.queryParameters['radius'], '2000.0');
+        expect(find.widgetWithText(TextField, 'Edappally'), findsOneWidget);
+        expect(find.widgetWithText(ActionChip, 'Kochi'), findsOneWidget);
+        expect(find.text('Nearby Seven'), findsOneWidget);
+        expect(find.text('1.2 km away'), findsOneWidget);
+      });
+
+      testWidgets('shows the location error message', (tester) async {
+        await tester.pumpWidget(MaterialApp(
+          home: BusSearchScreen(
+            busService: BusService(),
+            locationService: const FakeLocationService(
+              error: LocationException('Location permission denied.'),
+            ),
+          ),
+        ));
+
+        await tester.tap(find.byTooltip('Use current location'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Location permission denied.'), findsOneWidget);
+      });
+
+      testWidgets('reports a failed nearby request instead of "no buses found"', (tester) async {
+        final mockHttp = MockClient((_) async => http.Response(jsonEncode({'message': 'down'}), 500));
+        final busService = BusService(
+          apiClient: ApiClient(baseUrl: 'http://localhost:5000', client: mockHttp),
+        );
+
+        await tester.pumpWidget(MaterialApp(
+          home: BusSearchScreen(
+            busService: busService,
+            locationService: const FakeLocationService(location: location),
+          ),
+        ));
+
+        await tester.tap(find.byTooltip('Use current location'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Could not load nearby buses. Please try again.'), findsOneWidget);
+        expect(find.textContaining('No live buses found'), findsNothing);
+      });
     });
   });
 }

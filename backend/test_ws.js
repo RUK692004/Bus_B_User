@@ -10,6 +10,15 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Opens a socket and records every JSON message it receives. */
+async function connect(url) {
+  const ws = new WebSocket(url);
+  const messages = [];
+  ws.on('message', (data) => messages.push(JSON.parse(data.toString())));
+  await new Promise((resolve) => ws.on('open', resolve));
+  return { ws, messages };
+}
+
 async function runTests() {
   console.log('--- Starting WebSocket Integration Tests ---');
   await sleep(1000); // Give server a second to start listening
@@ -127,10 +136,95 @@ async function runTests() {
   await sleep(200);
   assert(pongReceived === true, 'Ping / Pong heartbeat works');
 
+  // 7. Subscribing through the connection query string replays the cached location
+  const queryUser = await connect(`${WS_URL}?role=user&busId=bus-101`);
+  await sleep(200);
+  assert(
+    queryUser.messages.some((m) => m.type === 'location_update' && m.busId === 'bus-101'),
+    'Query-string subscriber receives cached location on connect'
+  );
+
+  // 8. ?subscribe=* receives updates for any bus
+  const allUser = await connect(`${WS_URL}?subscribe=*`);
+  await sleep(100);
+
+  // 9. Aliases: action/sub + bus_id for users, event/update_location + latitude/longitude strings for drivers
+  const aliasUser = await connect(WS_URL);
+  aliasUser.ws.send(JSON.stringify({ action: 'sub', bus_id: 'bus-202' }));
+  await sleep(100);
+  assert(
+    aliasUser.messages.some((m) => m.type === 'subscribed' && m.busId === 'bus-202'),
+    'Subscribe accepts "action"/"sub" and "bus_id" aliases'
+  );
+
+  driverWs.send(JSON.stringify({ event: 'update_location', bus_id: 'bus-202', latitude: '1.5', longitude: '2.5' }));
+  await sleep(200);
+  const aliasUpdate = aliasUser.messages.find((m) => m.type === 'location_update' && m.busId === 'bus-202');
+  assert(
+    aliasUpdate !== undefined &&
+      aliasUpdate.lat === 1.5 && aliasUpdate.latitude === 1.5 &&
+      aliasUpdate.lng === 2.5 && aliasUpdate.longitude === 2.5 &&
+      aliasUpdate.bus_id === 'bus-202' && aliasUpdate.heading === 0 && aliasUpdate.speed === 0,
+    'Driver aliases are parsed and broadcast under both naming styles'
+  );
+  assert(
+    allUser.messages.some((m) => m.type === 'location_update' && m.busId === 'bus-202'),
+    '?subscribe=* subscriber receives updates for other buses'
+  );
+
+  // 10. A registered driver can omit busId on location updates
+  driverWs.send(JSON.stringify({ type: 'location', lat: 3, lng: 4 }));
+  await sleep(200);
+  assert(
+    queryUser.messages.some((m) => m.type === 'location_update' && m.busId === 'bus-101' && m.lat === 3),
+    'Location update without busId uses the registered driver bus'
+  );
+
+  // 11. get_location returns the cached location, or not_found
+  aliasUser.ws.send(JSON.stringify({ type: 'get_location', busId: 'bus-101' }));
+  aliasUser.ws.send(JSON.stringify({ type: 'get_location', busId: 'bus-missing' }));
+  await sleep(200);
+  assert(
+    aliasUser.messages.some((m) => m.type === 'location_update' && m.busId === 'bus-101' && m.lat === 3),
+    'get_location returns the latest cached location'
+  );
+  assert(
+    aliasUser.messages.some((m) => m.type === 'not_found' && m.busId === 'bus-missing'),
+    'get_location for an unknown bus returns not_found'
+  );
+
+  // 12. unsubscribe stops further updates
+  aliasUser.ws.send(JSON.stringify({ type: 'unsubscribe', busId: 'bus-202' }));
+  await sleep(100);
+  assert(
+    aliasUser.messages.some((m) => m.type === 'unsubscribed' && m.busId === 'bus-202'),
+    'unsubscribe is acknowledged'
+  );
+  const beforeCount = aliasUser.messages.filter((m) => m.type === 'location_update' && m.busId === 'bus-202').length;
+  driverWs.send(JSON.stringify({ type: 'location_update', busId: 'bus-202', lat: 5, lng: 6 }));
+  await sleep(200);
+  const afterCount = aliasUser.messages.filter((m) => m.type === 'location_update' && m.busId === 'bus-202').length;
+  assert(afterCount === beforeCount, 'No updates are delivered after unsubscribe');
+
+  // 13. Error replies
+  aliasUser.ws.send('not json');
+  aliasUser.ws.send(JSON.stringify({ type: 'does_not_exist' }));
+  aliasUser.ws.send(JSON.stringify({ type: 'subscribe' }));
+  aliasUser.ws.send(JSON.stringify({ type: 'location_update', busId: 'bus-x', lat: 'abc', lng: 1 }));
+  await sleep(200);
+  const errors = aliasUser.messages.filter((m) => m.type === 'error').map((m) => m.message);
+  assert(errors.some((e) => e.includes('Invalid JSON')), 'Invalid JSON returns an error');
+  assert(errors.some((e) => e.includes('Unknown message type')), 'Unknown message type returns an error');
+  assert(errors.some((e) => e.includes('Missing busId in subscribe')), 'Subscribe without busId returns an error');
+  assert(errors.some((e) => e.includes('Invalid location data')), 'Invalid coordinates return an error');
+
   // Close sockets
   userWs.close();
   userWs2.close();
   driverWs.close();
+  queryUser.ws.close();
+  allUser.ws.close();
+  aliasUser.ws.close();
 
   console.log(`\nResults: ${passed} passed, ${failed} failed.`);
 

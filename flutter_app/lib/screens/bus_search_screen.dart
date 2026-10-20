@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
 
 import '../models/bus_info.dart';
 import '../services/api_client.dart';
 import '../services/bus_service.dart';
+import '../services/location_service.dart';
+import '../widgets/bus_card.dart';
 import 'bus_route_details_screen.dart';
 import 'settings_screen.dart';
 
 class BusSearchScreen extends StatefulWidget {
   final BusService? busService;
+  final LocationService? locationService;
 
-  const BusSearchScreen({super.key, this.busService});
+  const BusSearchScreen({super.key, this.busService, this.locationService});
 
   @override
   State<BusSearchScreen> createState() => _BusSearchScreenState();
@@ -20,7 +21,8 @@ class BusSearchScreen extends StatefulWidget {
 class _BusSearchScreenState extends State<BusSearchScreen> {
   static const double _nearbyBusRadiusKm = 2.0;
 
-  BusService get _busService => widget.busService ?? BusService();
+  late final BusService _busService;
+  late final LocationService _locationService;
 
   bool _isFetchingLocation = false;
   bool _isSearchingBus = false;
@@ -37,6 +39,13 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
   List<String> _fromLocationSuggestions = [];
 
   @override
+  void initState() {
+    super.initState();
+    _busService = widget.busService ?? BusService();
+    _locationService = widget.locationService ?? const LocationService();
+  }
+
+  @override
   void dispose() {
     _fromController.dispose();
     _destinationController.dispose();
@@ -48,17 +57,6 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  Future<List<BusInfo>> _fetchBusesNearUserPosition(
-    Position userPosition,
-  ) {
-    final radiusMeters = _nearbyBusRadiusKm * 1000.0;
-    return _busService.getNearbyBuses(
-      lat: userPosition.latitude,
-      lng: userPosition.longitude,
-      radiusMeters: radiusMeters,
-    );
-  }
-
   Future<void> _fetchLocationAndNearbyBuses() async {
     if (_isFetchingLocation) return;
 
@@ -68,94 +66,23 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     });
 
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        setState(() {
-          _errorMessage = 'Location services are turned off.';
-        });
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied) {
-        setState(() {
-          _errorMessage = 'Location permission denied.';
-        });
-        return;
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        setState(() {
-          _errorMessage =
-              'Location permission permanently denied. Enable it from settings.';
-        });
-        return;
-      }
-
-      Position? position;
-      try {
-        position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 12),
-          ),
-        );
-      } catch (e) {
-        debugPrint('[BusSearch] Current position unavailable, using last known: $e');
-        position = await Geolocator.getLastKnownPosition();
-      }
-
-      if (position == null) {
-        setState(() {
-          _errorMessage = 'Could not get current location. Try again.';
-        });
-        return;
-      }
-
-      List<Placemark> placemarks = const [];
-      try {
-        placemarks = await placemarkFromCoordinates(
-          position.latitude,
-          position.longitude,
-        );
-      } catch (e) {
-        // Reverse geocoding may fail on web or quota limits; fallback to lat/lng.
-        debugPrint('[BusSearch] Reverse geocoding failed: $e');
-      }
-
-      final placemark = placemarks.isNotEmpty ? placemarks.first : null;
-      final subLocality = (placemark?.subLocality ?? '').trim();
-      final locality = (placemark?.locality ?? '').trim();
-      final subAdminArea = (placemark?.subAdministrativeArea ?? '').trim();
-
-      final suggestions = <String>{
-        if (subLocality.isNotEmpty) subLocality,
-        if (locality.isNotEmpty) locality,
-        if (subAdminArea.isNotEmpty) subAdminArea,
-      }.toList();
-
-      final coordinatesText = '${position.latitude.toStringAsFixed(3)}, '
-          '${position.longitude.toStringAsFixed(3)}';
-      
-      final primaryLocationName = suggestions.isNotEmpty
-          ? suggestions.first
-          : coordinatesText;
+      final location = await _locationService.getCurrentLocation();
+      if (!mounted) return;
 
       setState(() {
-        _locationLabel = coordinatesText;
-        _fromController.text = primaryLocationName;
-        _fromLocationSuggestions = suggestions;
+        _locationLabel = location.coordinatesText;
+        _fromController.text = location.displayName;
+        _fromLocationSuggestions = location.placeNames;
         _errorMessage = null;
       });
 
       final List<BusInfo> nearbyBuses;
       try {
-        nearbyBuses = await _fetchBusesNearUserPosition(position);
+        nearbyBuses = await _busService.getNearbyBuses(
+          lat: location.latitude,
+          lng: location.longitude,
+          radiusMeters: _nearbyBusRadiusKm * 1000.0,
+        );
       } catch (e) {
         debugPrint('[BusSearch] Nearby buses request failed: $e');
         if (!mounted) return;
@@ -170,9 +97,13 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
       setState(() {
         _trackedBuses = nearbyBuses;
         if (nearbyBuses.isEmpty) {
-          _errorMessage =
-              'No live buses found near your location right now.';
+          _errorMessage = 'No live buses found near your location right now.';
         }
+      });
+    } on LocationException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.message;
       });
     } catch (e) {
       debugPrint('[BusSearch] Fetching location failed: $e');
@@ -221,38 +152,10 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 44,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.my_location, color: Colors.white70),
-                  title: const Text(
-                    'Use your location',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  onTap: () => Navigator.pop(context, 'use_location'),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (context) => const _UseLocationSheet(),
     );
 
-    if (action == 'use_location') {
+    if (action == _UseLocationSheet.useLocation) {
       await _useCurrentLocationAsFrom();
     }
   }
@@ -373,6 +276,21 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     }
   }
 
+  void _openBusDetails(BusInfo bus) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BusRouteDetailsScreen(bus: bus, busService: _busService),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -385,220 +303,37 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: const [
-                        Icon(
-                          Icons.directions_bus,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'BusBee',
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.settings, color: Colors.white70),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const SettingsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                _Header(onSettingsPressed: _openSettings),
                 const SizedBox(height: 30),
-
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.circular(25),
-                  ),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _fromController,
-                        onTap: _showFromSuggestions,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: 'From',
-                          hintStyle: const TextStyle(color: Colors.white54),
-                          border: InputBorder.none,
-                          icon: const Icon(
-                            Icons.circle_outlined,
-                            color: Colors.white70,
-                          ),
-                          suffixIcon: IconButton(
-                            onPressed: _isFetchingLocation
-                                ? null
-                                : _useCurrentLocationAsFrom,
-                            icon: _isFetchingLocation
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white70,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.my_location,
-                                    color: Colors.white70,
-                                  ),
-                            tooltip: 'Use current location',
-                          ),
-                        ),
-                      ),
-                      if (_fromLocationSuggestions.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: _fromLocationSuggestions
-                                .map(
-                                  (suggestion) => ActionChip(
-                                    label: Text(suggestion),
-                                    avatar: const Icon(
-                                      Icons.place,
-                                      size: 16,
-                                      color: Colors.white70,
-                                    ),
-                                    labelStyle:
-                                        const TextStyle(color: Colors.white),
-                                    backgroundColor: const Color(0xFF2C2C2C),
-                                    side: const BorderSide(
-                                      color: Colors.white24,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _fromController.text = suggestion;
-                                      });
-                                    },
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ),
-                      ],
-                      const Divider(color: Colors.white24),
-                      TextField(
-                        controller: _destinationController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                          hintText: 'Destination',
-                          hintStyle: TextStyle(color: Colors.white54),
-                          border: InputBorder.none,
-                          icon: Icon(Icons.location_on, color: Colors.white70),
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2C2C2C),
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                          ),
-                          onPressed: _isSearchingTrips ? null : _searchTrips,
-                          child: _isSearchingTrips
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'Search Trips',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
+                _TripSearchCard(
+                  fromController: _fromController,
+                  destinationController: _destinationController,
+                  locationSuggestions: _fromLocationSuggestions,
+                  isFetchingLocation: _isFetchingLocation,
+                  isSearchingTrips: _isSearchingTrips,
+                  onFromTap: _showFromSuggestions,
+                  onUseCurrentLocation: _useCurrentLocationAsFrom,
+                  onSuggestionSelected: (suggestion) {
+                    setState(() {
+                      _fromController.text = suggestion;
+                    });
+                  },
+                  onSearch: _searchTrips,
                 ),
-
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 12),
                   Text(
                     _errorMessage!,
-                    style: const TextStyle(
-                      color: Colors.redAccent,
-                      fontSize: 13,
-                    ),
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 13),
                   ),
                 ],
-
                 const SizedBox(height: 25),
-
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search, color: Colors.white54),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _busSearchController,
-                          style: const TextStyle(color: Colors.white),
-                          textCapitalization: TextCapitalization.characters,
-                          decoration: const InputDecoration(
-                            hintText: 'Search by Bus No.',
-                            hintStyle: TextStyle(color: Colors.white54),
-                            border: InputBorder.none,
-                          ),
-                          onSubmitted: (_) => _searchBusByNumber(),
-                        ),
-                      ),
-                      _isSearchingBus
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white54,
-                              ),
-                            )
-                          : IconButton(
-                              icon: const Icon(
-                                Icons.arrow_forward_ios,
-                                color: Colors.white54,
-                                size: 18,
-                              ),
-                              onPressed: _searchBusByNumber,
-                            ),
-                    ],
-                  ),
+                _BusNumberSearchBar(
+                  controller: _busSearchController,
+                  isSearching: _isSearchingBus,
+                  onSearch: _searchBusByNumber,
                 ),
-
                 const SizedBox(height: 30),
-
                 const Text(
                   'Tracking Buses',
                   style: TextStyle(
@@ -607,50 +342,16 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
                     color: Colors.white,
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
                 if (_trackedBuses.isEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2C2C2C),
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          child: const Icon(
-                            Icons.directions_bus,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 15),
-                        const Expanded(
-                          child: Text(
-                            'Search for a bus number or enter a route to see matching buses here.',
-                            style: TextStyle(
-                              color: Colors.white54,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
+                  const _EmptyResults()
                 else
                   Column(
-                    children: _trackedBuses
-                        .map((bus) => _BusCard(bus: bus))
-                        .toList(),
+                    children: [
+                      for (final bus in _trackedBuses)
+                        BusCard(bus: bus, onTap: () => _openBusDetails(bus)),
+                    ],
                   ),
-
                 const SizedBox(height: 30),
               ],
             ),
@@ -661,91 +362,285 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
   }
 }
 
-class _BusCard extends StatelessWidget {
-  final BusInfo bus;
+class _Header extends StatelessWidget {
+  final VoidCallback onSettingsPressed;
 
-  const _BusCard({required this.bus});
+  const _Header({required this.onSettingsPressed});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => BusRouteDetailsScreen(bus: bus),
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 15),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(20),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.directions_bus, color: Colors.white, size: 28),
+            SizedBox(width: 8),
+            Text(
+              'BusBee',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        IconButton(
+          icon: const Icon(Icons.settings, color: Colors.white70),
+          onPressed: onSettingsPressed,
+        ),
+      ],
+    );
+  }
+}
+
+class _UseLocationSheet extends StatelessWidget {
+  static const useLocation = 'use_location';
+
+  const _UseLocationSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              width: 44,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 14),
               decoration: BoxDecoration(
-                color: const Color(0xFF2C2C2C),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: const Icon(Icons.directions_bus, color: Colors.white),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    bus.name,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Bus No: ${bus.number}',
-                    style: const TextStyle(color: Colors.white54),
-                  ),
-                  if (bus.start != null && bus.end != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Route: ${bus.start} → ${bus.end}',
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                  ],
-                  if (bus.stops.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Stops: ${bus.stops.join(', ')}',
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 12),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  const SizedBox(height: 6),
-                  Text(
-                    '${bus.distanceKm.toStringAsFixed(1)} km away',
-                    style: const TextStyle(
-                        color: Colors.white38, fontSize: 12),
-                  ),
-                ],
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const Icon(Icons.arrow_forward_ios,
-                color: Colors.white54, size: 16),
+            ListTile(
+              leading: const Icon(Icons.my_location, color: Colors.white70),
+              title: const Text(
+                'Use your location',
+                style: TextStyle(color: Colors.white),
+              ),
+              onTap: () => Navigator.pop(context, useLocation),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "From" / "Destination" inputs, location suggestions and the search button.
+class _TripSearchCard extends StatelessWidget {
+  final TextEditingController fromController;
+  final TextEditingController destinationController;
+  final List<String> locationSuggestions;
+  final bool isFetchingLocation;
+  final bool isSearchingTrips;
+  final VoidCallback onFromTap;
+  final VoidCallback onUseCurrentLocation;
+  final ValueChanged<String> onSuggestionSelected;
+  final VoidCallback onSearch;
+
+  const _TripSearchCard({
+    required this.fromController,
+    required this.destinationController,
+    required this.locationSuggestions,
+    required this.isFetchingLocation,
+    required this.isSearchingTrips,
+    required this.onFromTap,
+    required this.onUseCurrentLocation,
+    required this.onSuggestionSelected,
+    required this.onSearch,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(25),
+      ),
+      child: Column(
+        children: [
+          TextField(
+            controller: fromController,
+            onTap: onFromTap,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'From',
+              hintStyle: const TextStyle(color: Colors.white54),
+              border: InputBorder.none,
+              icon: const Icon(Icons.circle_outlined, color: Colors.white70),
+              suffixIcon: IconButton(
+                onPressed: isFetchingLocation ? null : onUseCurrentLocation,
+                icon: isFetchingLocation
+                    ? const _SmallSpinner(size: 18, color: Colors.white70)
+                    : const Icon(Icons.my_location, color: Colors.white70),
+                tooltip: 'Use current location',
+              ),
+            ),
+          ),
+          if (locationSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final suggestion in locationSuggestions)
+                    ActionChip(
+                      label: Text(suggestion),
+                      avatar: const Icon(Icons.place, size: 16, color: Colors.white70),
+                      labelStyle: const TextStyle(color: Colors.white),
+                      backgroundColor: const Color(0xFF2C2C2C),
+                      side: const BorderSide(color: Colors.white24),
+                      onPressed: () => onSuggestionSelected(suggestion),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          const Divider(color: Colors.white24),
+          TextField(
+            controller: destinationController,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'Destination',
+              hintStyle: TextStyle(color: Colors.white54),
+              border: InputBorder.none,
+              icon: Icon(Icons.location_on, color: Colors.white70),
+            ),
+          ),
+          const SizedBox(height: 15),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2C2C2C),
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+              ),
+              onPressed: isSearchingTrips ? null : onSearch,
+              child: isSearchingTrips
+                  ? const _SmallSpinner(size: 20, color: Colors.white)
+                  : const Text(
+                      'Search Trips',
+                      style: TextStyle(color: Colors.white),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BusNumberSearchBar extends StatelessWidget {
+  final TextEditingController controller;
+  final bool isSearching;
+  final VoidCallback onSearch;
+
+  const _BusNumberSearchBar({
+    required this.controller,
+    required this.isSearching,
+    required this.onSearch,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search, color: Colors.white54),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white),
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                hintText: 'Search by Bus No.',
+                hintStyle: TextStyle(color: Colors.white54),
+                border: InputBorder.none,
+              ),
+              onSubmitted: (_) => onSearch(),
+            ),
+          ),
+          isSearching
+              ? const _SmallSpinner(size: 18, color: Colors.white54)
+              : IconButton(
+                  icon: const Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.white54,
+                    size: 18,
+                  ),
+                  onPressed: onSearch,
+                ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyResults extends StatelessWidget {
+  const _EmptyResults();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2C2C2C),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Icon(Icons.directions_bus, color: Colors.white),
+          ),
+          const SizedBox(width: 15),
+          const Expanded(
+            child: Text(
+              'Search for a bus number or enter a route to see matching buses here.',
+              style: TextStyle(color: Colors.white54, fontSize: 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SmallSpinner extends StatelessWidget {
+  final double size;
+  final Color color;
+
+  const _SmallSpinner({required this.size, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CircularProgressIndicator(strokeWidth: 2, color: color),
     );
   }
 }

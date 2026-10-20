@@ -16,7 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  AuthService get _authService => widget.authService ?? AuthService();
+  late final AuthService _authService = widget.authService ?? AuthService();
 
   bool _isLoading = false;
   String? _errorMessage;

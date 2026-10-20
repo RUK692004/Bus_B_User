@@ -45,50 +45,34 @@ const searchTrips = async (req, res) => {
   }
 
   try {
-    // Build an ordered list of stop names per bus using start_location, stops JSONB
-    // array elements (as text), and end_location, then filter those where `from`
-    // precedes `to` in that ordered sequence.
+    // route_stops lists every bus's stops with their position along the route
+    // (0 = start, 1..N = stops, N+1 = end). For each bus, take the first position
+    // of `from` and of `to`, and keep the bus when `from` comes first.
     const result = await query(
-      `WITH ordered_stops AS (
+      `WITH route_stops AS (
+        SELECT b.id, 0 AS idx, LOWER(b.start_location) AS name
+        FROM buses b
+        UNION ALL
+        SELECT b.id, s.ordinality::int, LOWER(s.val)
+        FROM buses b, jsonb_array_elements_text(b.stops) WITH ORDINALITY AS s(val, ordinality)
+        UNION ALL
+        SELECT b.id, jsonb_array_length(b.stops) + 1, LOWER(b.end_location)
+        FROM buses b
+      ),
+      matches AS (
         SELECT
           id,
-          bus_number,
-          bus_name,
-          start_location,
-          end_location,
-          stops,
-          -- Assign positional index: 0 = start, 1..N = stops, N+1 = end
-          (
-            SELECT MIN(idx)
-            FROM (
-              SELECT 0 AS idx, LOWER(start_location) AS name
-              UNION ALL
-              SELECT ordinality::int AS idx, LOWER(s.val::text) AS name
-              FROM jsonb_array_elements_text(stops) WITH ORDINALITY AS s(val, ordinality)
-              UNION ALL
-              SELECT jsonb_array_length(stops) + 1 AS idx, LOWER(end_location) AS name
-            ) all_stops
-            WHERE name = LOWER($1)
-          ) AS from_idx,
-          (
-            SELECT MIN(idx)
-            FROM (
-              SELECT 0 AS idx, LOWER(start_location) AS name
-              UNION ALL
-              SELECT ordinality::int AS idx, LOWER(s.val::text) AS name
-              FROM jsonb_array_elements_text(stops) WITH ORDINALITY AS s(val, ordinality)
-              UNION ALL
-              SELECT jsonb_array_length(stops) + 1 AS idx, LOWER(end_location) AS name
-            ) all_stops
-            WHERE name = LOWER($2)
-          ) AS to_idx
-        FROM buses
+          MIN(idx) FILTER (WHERE name = LOWER($1)) AS from_idx,
+          MIN(idx) FILTER (WHERE name = LOWER($2)) AS to_idx
+        FROM route_stops
+        WHERE name IN (LOWER($1), LOWER($2))
+        GROUP BY id
       )
-      SELECT id, bus_number, bus_name, start_location, end_location, stops
-      FROM ordered_stops
-      WHERE from_idx IS NOT NULL
-        AND to_idx   IS NOT NULL
-        AND from_idx < to_idx`,
+      SELECT b.id, b.bus_number, b.bus_name, b.start_location, b.end_location, b.stops
+      FROM buses b
+      JOIN matches m ON m.id = b.id
+      WHERE m.from_idx < m.to_idx
+      ORDER BY b.bus_number`,
       [from, to]
     );
 

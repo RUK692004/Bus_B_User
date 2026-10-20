@@ -1,7 +1,22 @@
 import 'dart:async';
+import 'package:flutter_app/services/location_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:stream_channel/stream_channel.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+
+/// Returns a fixed [location], or throws [error] when one is given.
+class FakeLocationService extends LocationService {
+  final CurrentLocation? location;
+  final Object? error;
+
+  const FakeLocationService({this.location, this.error});
+
+  @override
+  Future<CurrentLocation> getCurrentLocation() async {
+    if (error != null) throw error!;
+    return location!;
+  }
+}
 
 class FakeSecureStorage extends FlutterSecureStorage {
   final Map<String, String> _storage = {};

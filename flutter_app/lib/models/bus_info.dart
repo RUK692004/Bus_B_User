@@ -67,6 +67,15 @@ class BusInfo {
     );
   }
 
+  /// Place names along the route in travel order: start, intermediate stops,
+  /// then end. Blank names are skipped.
+  List<String> get routeStopNames => [
+        if (start != null && start!.trim().isNotEmpty) start!.trim(),
+        for (final stop in stops)
+          if (stop.trim().isNotEmpty) stop.trim(),
+        if (end != null && end!.trim().isNotEmpty) end!.trim(),
+      ];
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
