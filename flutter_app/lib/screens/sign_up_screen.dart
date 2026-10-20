@@ -66,6 +66,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      debugPrint('[SignUp] Unexpected sign-up error: $e');
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Something went wrong. Please try again.';
         _isLoading = false;

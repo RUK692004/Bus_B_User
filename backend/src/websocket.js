@@ -30,6 +30,9 @@ function sendJson(ws, data) {
   }
 }
 
+// Last persistence error message, used to avoid logging the same failure on every update.
+let lastPersistError = null;
+
 /**
  * Helper to update database in background (best-effort, non-blocking).
  * @param {string|number} busId
@@ -48,8 +51,17 @@ async function persistLocationToDb(busId, lat, lng, heading) {
       [busId, lng, lat, heading || 0]
     );
   } catch (err) {
-    // Non-fatal: database might not be configured or available in MVP/test environments.
+    // Non-fatal: live tracking keeps working from the in-memory cache. Log each
+    // distinct error once so an unavailable database doesn't flood the console.
+    // Connection failures (e.g. ECONNREFUSED) can have an empty message, so fall back to the code.
+    const reason = err.message || err.code || String(err);
+    if (reason !== lastPersistError) {
+      lastPersistError = reason;
+      console.warn(`[WebSocket] Failed to persist location for bus ${busId}:`, reason);
+    }
+    return;
   }
+  lastPersistError = null;
 }
 
 /**

@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/bus_info.dart';
@@ -142,65 +144,139 @@ class BusService {
   /// Subscribes to real-time location telemetry for [busId] via WebSocket.
   /// Sends `{"type": "subscribe", "busId": busId}` on connection,
   /// parses `location_update` events, and sends `unsubscribe` on cancellation.
+  ///
+  /// When the connection drops, it reconnects with exponential backoff
+  /// (starting at [initialRetryDelay], capped at [maxRetryDelay]) until the
+  /// stream is cancelled. New connections are opened with [connect]
+  /// (defaults to [WebSocketChannel.connect]). If [channel] is supplied
+  /// without [connect], it is used once and the stream closes when it ends.
   Stream<Map<String, dynamic>> subscribeBusLocation({
     required String busId,
     WebSocketChannel? channel,
     String? wsUrl,
+    WebSocketChannel Function(Uri uri)? connect,
+    Duration initialRetryDelay = const Duration(seconds: 1),
+    Duration maxRetryDelay = const Duration(seconds: 30),
   }) {
-    final controller = StreamController<Map<String, dynamic>>.broadcast();
-    WebSocketChannel? activeChannel = channel;
-    StreamSubscription? channelSub;
+    return _BusLocationSubscription(
+      busId: busId,
+      uri: Uri.parse(wsUrl ?? defaultWsUrl(baseUrl: apiClient.baseUrl)),
+      initialChannel: channel,
+      connect: connect,
+      initialRetryDelay: initialRetryDelay,
+      maxRetryDelay: maxRetryDelay,
+    ).stream;
+  }
+}
 
+/// One live-location subscription, including its reconnect state.
+class _BusLocationSubscription {
+  final String busId;
+  final Uri uri;
+  final WebSocketChannel Function(Uri uri) _connect;
+  final bool _canReconnect;
+  final Duration initialRetryDelay;
+  final Duration maxRetryDelay;
+
+  final _controller = StreamController<Map<String, dynamic>>.broadcast();
+  WebSocketChannel? _channel;
+  StreamSubscription<dynamic>? _channelSub;
+  Timer? _retryTimer;
+  late Duration _retryDelay = initialRetryDelay;
+  bool _cancelled = false;
+
+  _BusLocationSubscription({
+    required this.busId,
+    required this.uri,
+    required WebSocketChannel? initialChannel,
+    required WebSocketChannel Function(Uri uri)? connect,
+    required this.initialRetryDelay,
+    required this.maxRetryDelay,
+  })  : _connect = connect ?? WebSocketChannel.connect,
+        // An injected channel with no way to open another one cannot reconnect.
+        _canReconnect = initialChannel == null || connect != null {
+    _controller.onCancel = _cancel;
+    _open(initialChannel);
+  }
+
+  Stream<Map<String, dynamic>> get stream => _controller.stream;
+
+  void _open(WebSocketChannel? existing) {
+    final WebSocketChannel channel;
     try {
-      final targetUrl = wsUrl ?? defaultWsUrl(baseUrl: apiClient.baseUrl);
-      activeChannel ??= WebSocketChannel.connect(Uri.parse(targetUrl));
-
-      // Subscribe to the target bus
-      activeChannel.sink.add(jsonEncode({
-        'type': 'subscribe',
-        'busId': busId,
-      }));
-
-      channelSub = activeChannel.stream.listen(
-        (data) {
-          try {
-            final decoded = jsonDecode(data.toString());
-            if (decoded is Map<String, dynamic>) {
-              final type = decoded['type'] ?? decoded['event'];
-              if (type == 'location_update' ||
-                  (decoded.containsKey('lat') && decoded.containsKey('lng')) ||
-                  (decoded.containsKey('latitude') && decoded.containsKey('longitude'))) {
-                controller.add(decoded);
-              }
-            }
-          } catch (_) {
-            // Ignore malformed message without crashing
-          }
-        },
-        onError: (err) {
-          // Gracefully absorb connection errors
-        },
-        onDone: () {
-          if (!controller.isClosed) {
-            controller.close();
-          }
-        },
-      );
-    } catch (_) {
-      // Handled safely without crashing
+      channel = existing ?? _connect(uri);
+      channel.sink.add(jsonEncode({'type': 'subscribe', 'busId': busId}));
+    } catch (e) {
+      debugPrint('[BusService] Could not open live location socket for bus $busId: $e');
+      _onConnectionLost();
+      return;
     }
 
-    controller.onCancel = () {
-      try {
-        activeChannel?.sink.add(jsonEncode({
-          'type': 'unsubscribe',
-          'busId': busId,
-        }));
-      } catch (_) {}
-      channelSub?.cancel();
-      activeChannel?.sink.close();
-    };
+    _channel = channel;
+    _channelSub = channel.stream.listen(
+      _onMessage,
+      onError: (Object e) {
+        debugPrint('[BusService] Live location socket error for bus $busId: $e');
+      },
+      onDone: _onConnectionLost,
+    );
+  }
 
-    return controller.stream;
+  void _onMessage(dynamic data) {
+    // Any message means the connection is healthy again.
+    _retryDelay = initialRetryDelay;
+
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(data.toString());
+    } on FormatException catch (e) {
+      debugPrint('[BusService] Ignoring malformed live location message for bus $busId: $e');
+      return;
+    }
+
+    if (decoded is Map<String, dynamic>) {
+      final type = decoded['type'] ?? decoded['event'];
+      if (type == 'location_update' ||
+          (decoded.containsKey('lat') && decoded.containsKey('lng')) ||
+          (decoded.containsKey('latitude') && decoded.containsKey('longitude'))) {
+        _controller.add(decoded);
+      }
+    }
+  }
+
+  void _onConnectionLost() {
+    _channelSub?.cancel();
+    _channelSub = null;
+    _channel = null;
+    if (_cancelled) return;
+
+    if (!_canReconnect) {
+      _controller.close();
+      return;
+    }
+
+    final delay = _retryDelay;
+    final doubled = _retryDelay * 2;
+    _retryDelay = doubled > maxRetryDelay ? maxRetryDelay : doubled;
+    debugPrint('[BusService] Live location socket for bus $busId closed; reconnecting in ${delay.inMilliseconds} ms');
+    _retryTimer = Timer(delay, () {
+      if (!_cancelled) _open(null);
+    });
+  }
+
+  Future<void> _cancel() async {
+    _cancelled = true;
+    _retryTimer?.cancel();
+
+    final channel = _channel;
+    if (channel != null) {
+      try {
+        channel.sink.add(jsonEncode({'type': 'unsubscribe', 'busId': busId}));
+      } catch (e) {
+        debugPrint('[BusService] Could not send unsubscribe for bus $busId: $e');
+      }
+      await _channelSub?.cancel();
+      await channel.sink.close();
+    }
   }
 }

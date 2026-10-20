@@ -67,6 +67,8 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      debugPrint('[Login] Unexpected login error: $e');
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Something went wrong. Please try again.';
         _isLoading = false;

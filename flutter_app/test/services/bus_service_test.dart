@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -255,6 +256,67 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 10));
 
       expect(sentMessages.any((msg) => msg['type'] == 'unsubscribe' && msg['busId'] == 'bus-42'), true);
+    });
+
+    test('subscribeBusLocation closes the stream when an injected channel ends and no connector is given', () async {
+      final fakeChannel = FakeWebSocketChannel();
+      final busService = BusService();
+
+      final stream = busService.subscribeBusLocation(busId: 'bus-7', channel: fakeChannel);
+      final done = Completer<void>();
+      stream.listen((_) {}, onDone: done.complete);
+
+      await fakeChannel.incoming.close();
+      await done.future.timeout(const Duration(seconds: 1));
+    });
+
+    test('subscribeBusLocation reconnects and resubscribes after the socket drops', () async {
+      final channels = <FakeWebSocketChannel>[];
+      final sentPerChannel = <List<Map<String, dynamic>>>[];
+      final connectedUris = <Uri>[];
+      final busService = BusService();
+
+      final stream = busService.subscribeBusLocation(
+        busId: 'bus-9',
+        wsUrl: 'ws://example.test:5000',
+        initialRetryDelay: const Duration(milliseconds: 5),
+        connect: (uri) {
+          connectedUris.add(uri);
+          final channel = FakeWebSocketChannel();
+          final sent = <Map<String, dynamic>>[];
+          channel.outgoing.stream.listen((data) => sent.add(jsonDecode(data.toString())));
+          channels.add(channel);
+          sentPerChannel.add(sent);
+          return channel;
+        },
+      );
+
+      final received = <Map<String, dynamic>>[];
+      final sub = stream.listen(received.add);
+
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(channels.length, 1);
+      expect(connectedUris.single.toString(), 'ws://example.test:5000');
+
+      // Server drops the first connection.
+      await channels.first.incoming.close();
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      expect(channels.length, 2);
+      expect(sentPerChannel[1].first, {'type': 'subscribe', 'busId': 'bus-9'});
+
+      // Updates flow through the new connection.
+      channels[1].incoming.add(jsonEncode({'type': 'location_update', 'busId': 'bus-9', 'lat': 1.5, 'lng': 2.5}));
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(received.single['lat'], 1.5);
+
+      // Cancelling stops further reconnects.
+      await sub.cancel();
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(sentPerChannel[1].last, {'type': 'unsubscribe', 'busId': 'bus-9'});
+      await channels[1].incoming.close();
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(channels.length, 2);
     });
   });
 }

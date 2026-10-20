@@ -11,9 +11,10 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
+// The pool discards the broken client and opens a new one on the next query,
+// so an idle-client error is logged rather than taking the whole server down.
 pool.on('error', (err) => {
   console.error('[DB] Unexpected error on idle client:', err.message);
-  process.exit(1);
 });
 
 pool.on('connect', () => {

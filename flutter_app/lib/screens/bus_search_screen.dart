@@ -48,138 +48,15 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  List<String> _buildSearchCandidates(String input) {
-    final normalizedInput = _normalizeText(input);
-    final parts = input
-        .split(RegExp(r'[,/-]'))
-        .map((part) => _normalizeText(part))
-        .where((part) => part.isNotEmpty)
-        .toList();
-
-    final candidates = <String>[normalizedInput, ...parts];
-
-    // Include location-based hints if the user selected current location.
-    if (_fromController.text.trim() == input.trim() && input.isNotEmpty) {
-      candidates.addAll(
-        _fromLocationSuggestions.map((s) => _normalizeText(s)).where(
-              (s) => s.isNotEmpty,
-            ),
-      );
-    }
-
-    return candidates.toSet().toList();
-  }
-
-  int _findBestIndex(List<String> normalizedRoute, List<String> candidates) {
-    for (final candidate in candidates) {
-      final exactIndex = normalizedRoute.indexOf(candidate);
-      if (exactIndex != -1) return exactIndex;
-    }
-
-    for (final candidate in candidates) {
-      final containsIndex = normalizedRoute.indexWhere(
-        (point) => point.contains(candidate) || candidate.contains(point),
-      );
-      if (containsIndex != -1) return containsIndex;
-    }
-
-    return -1;
-  }
-
-  List<String> _buildRoutePoints({
-    String? start,
-    List<String> stops = const [],
-    String? end,
-  }) {
-    final List<String> routePoints = [];
-
-    if (start != null && start.trim().isNotEmpty) {
-      routePoints.add(start.trim());
-    }
-
-    for (final stop in stops) {
-      if (stop.trim().isNotEmpty) {
-        routePoints.add(stop.trim());
-      }
-    }
-
-    if (end != null && end.trim().isNotEmpty) {
-      routePoints.add(end.trim());
-    }
-
-    return routePoints;
-  }
-
-  // ignore: unused_element - Preserved for backend API integration in TICKET-203.
-  BusInfo _mapBusFromFirestore(
-    Map<String, dynamic> data, {
-    String? id,
-    double distanceKm = 0,
-  }) {
-    final stops =
-        (data['stops'] as List?)?.map((e) => e.toString()).toList() ?? [];
-
-    final busNumber =
-        (data['busNumber'] as String?)?.trim().toUpperCase() ?? 'UNKNOWN';
-
-    return BusInfo(
-      id: id,
-      name: (data['busName'] as String?)?.trim().isNotEmpty == true
-          ? (data['busName'] as String).trim()
-          : (data['routeName'] as String?)?.trim().isNotEmpty == true
-          ? (data['routeName'] as String).trim()
-          : 'Bus $busNumber',
-      number: busNumber,
-      distanceKm: distanceKm,
-      start: data['start'] as String?,
-      end: data['end'] as String?,
-      stops: stops,
-    );
-  }
-
-  // ignore: unused_element - Preserved for backend API integration in TICKET-203.
-  bool _doesBusMatchRoute({
-    required String from,
-    required String destination,
-    required String? start,
-    required List<String> stops,
-    required String? end,
-  }) {
-    final routePoints = _buildRoutePoints(start: start, stops: stops, end: end);
-
-    final normalizedRoute = routePoints
-        .map((point) => _normalizeText(point))
-        .toList();
-
-    final fromCandidates = _buildSearchCandidates(from);
-    final destinationCandidates = _buildSearchCandidates(destination);
-
-    final fromIndex = _findBestIndex(normalizedRoute, fromCandidates);
-    final destinationIndex = _findBestIndex(
-      normalizedRoute,
-      destinationCandidates,
-    );
-
-    if (fromIndex == -1 || destinationIndex == -1) {
-      return false;
-    }
-
-    return fromIndex < destinationIndex;
-  }
-
   Future<List<BusInfo>> _fetchBusesNearUserPosition(
     Position userPosition,
-  ) async {
-    try {
-      final radiusMeters = _nearbyBusRadiusKm * 1000.0;
-      return await _busService.getNearbyBuses(
-        lat: userPosition.latitude,
-        lng: userPosition.longitude,
-        radiusMeters: radiusMeters,
-      );
-    } catch (_) {
-      return const [];
-    }
+  ) {
+    final radiusMeters = _nearbyBusRadiusKm * 1000.0;
+    return _busService.getNearbyBuses(
+      lat: userPosition.latitude,
+      lng: userPosition.longitude,
+      radiusMeters: radiusMeters,
+    );
   }
 
   Future<void> _fetchLocationAndNearbyBuses() async {
@@ -228,7 +105,8 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
             timeLimit: Duration(seconds: 12),
           ),
         );
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[BusSearch] Current position unavailable, using last known: $e');
         position = await Geolocator.getLastKnownPosition();
       }
 
@@ -245,8 +123,9 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
           position.latitude,
           position.longitude,
         );
-      } catch (_) {
+      } catch (e) {
         // Reverse geocoding may fail on web or quota limits; fallback to lat/lng.
+        debugPrint('[BusSearch] Reverse geocoding failed: $e');
       }
 
       final placemark = placemarks.isNotEmpty ? placemarks.first : null;
@@ -274,7 +153,18 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
         _errorMessage = null;
       });
 
-      final nearbyBuses = await _fetchBusesNearUserPosition(position);
+      final List<BusInfo> nearbyBuses;
+      try {
+        nearbyBuses = await _fetchBusesNearUserPosition(position);
+      } catch (e) {
+        debugPrint('[BusSearch] Nearby buses request failed: $e');
+        if (!mounted) return;
+        setState(() {
+          _trackedBuses = [];
+          _errorMessage = 'Could not load nearby buses. Please try again.';
+        });
+        return;
+      }
       if (!mounted) return;
 
       setState(() {
@@ -285,6 +175,8 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
         }
       });
     } catch (e) {
+      debugPrint('[BusSearch] Fetching location failed: $e');
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Failed to fetch location.';
       });
@@ -406,6 +298,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
         }
       });
     } catch (e) {
+      debugPrint('[BusSearch] Bus number search failed: $e');
       if (!mounted) return;
       setState(() {
         _trackedBuses = [];
@@ -465,6 +358,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
         _errorMessage = e.message;
       });
     } catch (e) {
+      debugPrint('[BusSearch] Trip search failed: $e');
       if (!mounted) return;
       setState(() {
         _trackedBuses = [];

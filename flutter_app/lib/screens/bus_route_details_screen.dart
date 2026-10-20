@@ -168,7 +168,8 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
     if (busId != null && busId.isNotEmpty) {
       try {
         routeCoordinates = await _busService.getBusRoute(busId);
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[BusRouteDetails] Saved route unavailable for bus $busId, falling back to geocoding: $e');
         routeCoordinates = const [];
       }
     }
@@ -222,7 +223,7 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
       // Keep it bounded.
       final int maxGeocodePoints = kIsWeb ? labels.length : 8;
 
-      // Fallback: geocode start/stops/end place names from Firestore data.
+      // Fallback: geocode start/stops/end place names from the bus record.
       for (var i = 0; i < labels.length && i < maxGeocodePoints; i++) {
         final label = labels[i];
         final latLng = await _geocodePlaceName(label);
@@ -254,7 +255,7 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
 
       if (labels.length > maxGeocodePoints) {
         _routeError =
-            'Route has many stops. Save routeCoordinates in Firestore for faster map loading.';
+            'Route has many stops. Add route coordinates for this bus on the server for faster map loading.';
       }
     }
 

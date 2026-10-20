@@ -14,15 +14,18 @@ Future<Widget> determineInitialScreen({AuthService? authService}) async {
         await service.getCurrentUser();
         return const BusSearchScreen();
       } on ApiException catch (e) {
+        debugPrint('[Startup] Stored session rejected: $e');
         if (e.statusCode == 401 || e.statusCode == 403 || e.statusCode == 404) {
           await service.logout();
         }
         return const LoginScreen();
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[Startup] Could not validate stored session: $e');
         return const LoginScreen();
       }
     }
-  } catch (_) {
+  } catch (e) {
+    debugPrint('[Startup] Could not read stored token: $e');
     return const LoginScreen();
   }
 
