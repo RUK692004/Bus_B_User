@@ -2,6 +2,12 @@
 
 const { query } = require('../db');
 
+// Bus ids are uuids; anything else would make Postgres throw.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Buses whose last location is older than this are hidden from /nearby.
+const LOCATION_FRESHNESS = '10 minutes';
+
 // ---------------------------------------------------------------------------
 // GET /api/buses/search?number=...
 // ---------------------------------------------------------------------------
@@ -103,6 +109,7 @@ const nearbyBuses = async (req, res) => {
          ST_Y(l.geom)  AS lat,
          ST_X(l.geom)  AS lng,
          l.heading,
+         l.speed,
          l.updated_at,
          ROUND(
            (ST_Distance(
@@ -117,8 +124,9 @@ const nearbyBuses = async (req, res) => {
          ST_MakePoint($2, $1)::geography,
          $3
        )
+       AND l.updated_at > NOW() - $4::interval
        ORDER BY distance_km ASC`,
-      [lat, lng, radius]
+      [lat, lng, radius, LOCATION_FRESHNESS]
     );
 
     return res.json({ buses: result.rows });
@@ -133,6 +141,10 @@ const nearbyBuses = async (req, res) => {
 // ---------------------------------------------------------------------------
 const getBusRoute = async (req, res) => {
   const { id } = req.params;
+
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ message: 'Invalid bus id.' });
+  }
 
   try {
     const result = await query(

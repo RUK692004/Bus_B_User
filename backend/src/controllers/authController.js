@@ -23,7 +23,9 @@ const signToken = (user) =>
 // POST /api/auth/signup
 // ---------------------------------------------------------------------------
 const signup = async (req, res) => {
-  const { name, email, password, role = 'user' } = req.body;
+  // `role` is never read from the request: everyone signs up as a 'user'.
+  // Drivers and admins are promoted in the database.
+  const { name, email, password } = req.body;
 
   // --- Input validation ---
   if (!name || !email || !password) {
@@ -51,7 +53,7 @@ const signup = async (req, res) => {
       `INSERT INTO users (id, name, email, password_hash, role, created_at)
        VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
        RETURNING id, name, email, role`,
-      [name.trim(), email.toLowerCase(), password_hash, role]
+      [name.trim(), email.toLowerCase(), password_hash, 'user']
     );
 
     const user = result.rows[0];

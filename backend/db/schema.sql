@@ -33,8 +33,12 @@ CREATE TABLE IF NOT EXISTS bus_locations (
   bus_id     uuid                  PRIMARY KEY REFERENCES buses (id) ON DELETE CASCADE,
   geom       geometry(Point, 4326) NOT NULL,
   heading    double precision      NOT NULL DEFAULT 0,
+  speed      double precision      NOT NULL DEFAULT 0,
   updated_at timestamptz           NOT NULL DEFAULT NOW()
 );
+
+-- Adds columns introduced after a database was first created.
+ALTER TABLE bus_locations ADD COLUMN IF NOT EXISTS speed double precision NOT NULL DEFAULT 0;
 
 -- /api/buses/nearby filters with ST_DWithin on geom::geography.
 CREATE INDEX IF NOT EXISTS bus_locations_geog_idx ON bus_locations USING GIST ((geom::geography));

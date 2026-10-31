@@ -1,6 +1,7 @@
 'use strict';
 
 const { WebSocketServer, WebSocket } = require('ws');
+const jwt = require('jsonwebtoken');
 const url = require('url');
 
 // ---------------------------------------------------------------------------
@@ -19,6 +20,9 @@ const allBusSubscribers = new Set();
 let lastPersistError = null;
 
 const HEARTBEAT_INTERVAL_MS = 30000;
+
+// Bus ids are uuids (see db/schema.sql).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,16 +90,18 @@ function toNumber(value) {
  * @param {number} lat
  * @param {number} lng
  * @param {number} heading
+ * @param {number} speed
  */
-async function persistLocationToDb(busId, lat, lng, heading) {
+async function persistLocationToDb(busId, lat, lng, heading, speed) {
   try {
     const { query } = require('./db');
     await query(
-      `INSERT INTO bus_locations (bus_id, geom, heading, updated_at)
-       VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, NOW())
+      `INSERT INTO bus_locations (bus_id, geom, heading, speed, updated_at)
+       VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, NOW())
        ON CONFLICT (bus_id)
-       DO UPDATE SET geom = EXCLUDED.geom, heading = EXCLUDED.heading, updated_at = NOW()`,
-      [busId, lng, lat, heading || 0]
+       DO UPDATE SET geom = EXCLUDED.geom, heading = EXCLUDED.heading,
+                     speed = EXCLUDED.speed, updated_at = NOW()`,
+      [busId, lng, lat, heading || 0, speed || 0]
     );
   } catch (err) {
     // Non-fatal: live tracking keeps working from the in-memory cache. Log each
@@ -131,10 +137,59 @@ function broadcastLocation(busId, locationData) {
 // Subscription bookkeeping
 // ---------------------------------------------------------------------------
 
+/** Returns the decoded token when it is valid and belongs to a driver, otherwise null. */
+function verifyDriverToken(token) {
+  if (!token) return null;
+  try {
+    const user = jwt.verify(token, process.env.JWT_SECRET);
+    return user.role === 'driver' ? user : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Checks whether a driver may send locations for a bus: the token must belong
+ * to a user with role 'driver' and the bus must exist.
+ * @returns {Promise<string|null>} An error message, or null when allowed.
+ */
+async function authorizeDriver(busId, token) {
+  if (!busId) return 'Missing busId in registration.';
+  if (!UUID_RE.test(String(busId))) return 'Invalid busId. Bus ids are uuids.';
+  if (!verifyDriverToken(token)) return 'Driver login required. Send a valid driver token.';
+
+  try {
+    const { query } = require('./db');
+    const { rowCount } = await query('SELECT 1 FROM buses WHERE id = $1', [busId]);
+    if (rowCount === 0) return `Unknown bus ${busId}.`;
+  } catch (err) {
+    // The driver is already authenticated, so keep live tracking working
+    // while the database is unreachable instead of rejecting them.
+    console.warn('[WebSocket] Could not check that bus exists, allowing driver:', err.message || err.code);
+  }
+  return null;
+}
+
 function registerDriver(ws, busId) {
   ws.clientInfo.role = 'driver';
   ws.clientInfo.registeredBusId = String(busId);
   console.log(`[WebSocket] Driver registered for bus ${busId}`);
+}
+
+/**
+ * Authorizes and registers a driver, replying with `driver_registered` or `error`.
+ * Drivers should wait for `driver_registered` before sending locations.
+ */
+async function registerDriverIfAllowed(ws, busId, token) {
+  const error = await authorizeDriver(busId, token);
+  if (error) return sendError(ws, error);
+
+  registerDriver(ws, busId);
+  sendJson(ws, {
+    type: 'driver_registered',
+    busId: String(busId),
+    message: `Driver registered for bus ${busId}`,
+  });
 }
 
 function subscribeToAll(ws) {
@@ -182,29 +237,29 @@ function replayCachedLocation(ws, busId) {
 // ---------------------------------------------------------------------------
 
 function handleRegisterDriver(ws, msg) {
-  const busId = busIdFrom(msg);
-  if (!busId) {
-    return sendError(ws, 'Missing busId in registration.');
-  }
-  registerDriver(ws, busId);
-  sendJson(ws, {
-    type: 'driver_registered',
-    busId: String(busId),
-    message: `Driver registered for bus ${busId}`,
-  });
+  return registerDriverIfAllowed(ws, busIdFrom(msg), msg.token);
 }
 
 function handleLocationUpdate(ws, msg) {
-  const busId = busIdFrom(msg) || ws.clientInfo.registeredBusId;
+  // Only a registered driver may send locations, and only for its own bus.
+  const busId = ws.clientInfo.registeredBusId;
+  if (!busId) {
+    return sendError(ws, 'Register as a driver before sending locations.');
+  }
+  const requestedBusId = busIdFrom(msg);
+  if (requestedBusId && String(requestedBusId) !== busId) {
+    return sendError(ws, `This connection can only send locations for bus ${busId}.`);
+  }
+
   const lat = typeof msg.lat === 'number' ? msg.lat : parseFloat(msg.latitude);
   const lng = typeof msg.lng === 'number' ? msg.lng : parseFloat(msg.longitude);
   const heading = toNumber(msg.heading) || 0;
   const speed = toNumber(msg.speed) || 0;
 
-  if (!busId || isNaN(lat) || isNaN(lng)) {
+  if (isNaN(lat) || isNaN(lng)) {
     return sendError(
       ws,
-      'Invalid location data. busId, lat (or latitude), and lng (or longitude) are required numbers.'
+      'Invalid location data. lat (or latitude) and lng (or longitude) are required numbers.'
     );
   }
 
@@ -213,7 +268,7 @@ function handleLocationUpdate(ws, msg) {
 
   busLocations.set(String(busId), locationRecord);
   broadcastLocation(busId, locationRecord);
-  persistLocationToDb(busId, lat, lng, heading); // non-blocking
+  persistLocationToDb(busId, lat, lng, heading, speed); // non-blocking
 
   sendJson(ws, { type: 'location_ack', busId: String(busId), updatedAt });
 }
@@ -310,14 +365,16 @@ const messageHandlers = {
 
 /**
  * Applies driver registration / subscriptions passed in the connection URL,
- * e.g. `?role=driver&busId=…`, `?role=user&busId=…`, `?subscribe=*`.
+ * e.g. `?role=driver&busId=…&token=…`, `?role=user&busId=…`, `?subscribe=*`.
  */
 function applyConnectionQuery(ws, req) {
-  const { role, busId, bus_id, subscribe } = url.parse(req.url, true).query;
+  const { role, busId, bus_id, subscribe, token } = url.parse(req.url, true).query;
   const queryBusId = busId || bus_id;
 
-  if (role === 'driver' && queryBusId) {
-    registerDriver(ws, queryBusId);
+  if (role === 'driver') {
+    registerDriverIfAllowed(ws, queryBusId, token).catch((err) => {
+      console.error('[WebSocket] Driver registration failed:', err.message);
+    });
   }
 
   const target = subscribe || (role === 'user' ? queryBusId : null);
@@ -350,7 +407,11 @@ function handleMessage(ws, rawMessage) {
   if (!handler) {
     return sendError(ws, `Unknown message type: "${action}"`);
   }
-  handler(ws, msg);
+  // Some handlers are async (driver registration queries the database).
+  Promise.resolve(handler(ws, msg)).catch((err) => {
+    console.error(`[WebSocket] Handler for "${action}" failed:`, err.message);
+    sendError(ws, 'Internal server error.');
+  });
 }
 
 /**
