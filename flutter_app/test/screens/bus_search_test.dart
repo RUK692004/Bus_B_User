@@ -23,7 +23,7 @@ void main() {
       );
 
       // Tap 'Search Trips' button without input
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Search Trips'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Search Trips'));
       await tester.pump();
 
       expect(
@@ -45,7 +45,7 @@ void main() {
       await tester.enterText(textFields.at(0), 'City Center');
       await tester.enterText(textFields.at(1), 'City Center');
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Search Trips'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Search Trips'));
       await tester.pump();
 
       expect(
@@ -89,7 +89,7 @@ void main() {
       await tester.enterText(textFields.at(0), 'Station A');
       await tester.enterText(textFields.at(1), 'Station B');
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Search Trips'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Search Trips'));
       await tester.pumpAndSettle();
 
       expect(find.text('Express Route 101'), findsOneWidget);
@@ -117,7 +117,7 @@ void main() {
       await tester.enterText(textFields.at(0), 'Remote Village A');
       await tester.enterText(textFields.at(1), 'Remote Village B');
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Search Trips'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Search Trips'));
       await tester.pumpAndSettle();
 
       expect(find.text('No buses found for this route.'), findsOneWidget);
@@ -159,14 +159,14 @@ void main() {
 
       // Tap search arrow icon button
       final searchArrow = find.byIcon(Icons.arrow_forward_ios);
-      await tester.tap(searchArrow);
+      await tapVisible(tester, searchArrow);
       await tester.pumpAndSettle();
 
       expect(find.text('Airport Flyer'), findsOneWidget);
       expect(find.text('Bus No: 202'), findsOneWidget);
 
       // Tap the bus card to verify navigation to route details
-      await tester.tap(find.text('Airport Flyer'));
+      await tapVisible(tester, find.text('Airport Flyer'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
@@ -193,7 +193,7 @@ void main() {
       final busSearchInput = find.widgetWithText(TextField, 'Search by Bus No.');
       await tester.enterText(busSearchInput, '9999');
 
-      await tester.tap(find.byIcon(Icons.arrow_forward_ios));
+      await tapVisible(tester, find.byIcon(Icons.arrow_forward_ios));
       await tester.pumpAndSettle();
 
       expect(find.text('No bus found with that number.'), findsOneWidget);
@@ -230,7 +230,7 @@ void main() {
           ),
         ));
 
-        await tester.tap(find.byTooltip('Use current location'));
+        await tapVisible(tester, find.byTooltip('Use current location'));
         await tester.pumpAndSettle();
 
         expect(nearbyRequest!.queryParameters['lat'], '10.0261');
@@ -251,7 +251,7 @@ void main() {
           ),
         ));
 
-        await tester.tap(find.byTooltip('Use current location'));
+        await tapVisible(tester, find.byTooltip('Use current location'));
         await tester.pumpAndSettle();
 
         expect(find.text('Location permission denied.'), findsOneWidget);
@@ -270,7 +270,7 @@ void main() {
           ),
         ));
 
-        await tester.tap(find.byTooltip('Use current location'));
+        await tapVisible(tester, find.byTooltip('Use current location'));
         await tester.pumpAndSettle();
 
         expect(find.text('Could not load nearby buses. Please try again.'), findsOneWidget);

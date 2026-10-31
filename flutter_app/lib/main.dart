@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_app/screens/bus_search_screen.dart';
 import 'package:flutter_app/screens/login_screen.dart';
 import 'package:flutter_app/services/auth_service.dart';
+import 'package:flutter_app/theme/app_theme.dart';
 
 /// Determines the starting screen by validating the stored JWT session.
 Future<Widget> determineInitialScreen({AuthService? authService}) async {
@@ -49,14 +50,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: Colors.black,
-        brightness: Brightness.dark,
-        colorScheme: const ColorScheme.dark(
-          surface: Colors.black,
-          primary: Colors.blueAccent,
-        ),
-      ),
+      theme: AppTheme.light(),
       home: initialScreen,
     );
   }

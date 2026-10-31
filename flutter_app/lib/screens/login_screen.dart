@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../widgets/auth_scaffold.dart';
+import '../widgets/brand.dart';
 import 'sign_up_screen.dart';
 import 'bus_search_screen.dart';
 
@@ -78,186 +80,63 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 30),
-          child: Column(
-            children: [
-              const SizedBox(height: 50),
-
-              // 🔹 Logo fixed at top
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.directions_bus, color: Colors.white, size: 40),
-                  SizedBox(width: 10),
-                  Text(
-                    "BUSBEE",
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-
-              // 🔹 This keeps remaining content centered
-              Expanded(
-                child: Center(
-                  child: SingleChildScrollView(
-                    child: SizedBox(
-                      width: MediaQuery.of(context).size.width * 0.75,
-                      child: Column(
-                        children: [
-                          const Text(
-                            "Login",
-                            style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-
-                          const SizedBox(height: 40),
-
-                          if (_errorMessage != null) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: Colors.red.shade900.withValues(alpha: 0.5),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.error_outline,
-                                      color: Colors.white70, size: 22),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      _errorMessage!,
-                                      style: const TextStyle(
-                                          color: Colors.white, fontSize: 14),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                          ],
-
-                          // Email Field
-                          TextField(
-                            controller: _emailController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: "Email",
-                              hintStyle: const TextStyle(color: Colors.white54),
-                              filled: true,
-                              fillColor: Colors.grey[900],
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                                borderSide: BorderSide.none,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          // Password Field
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: !_isPasswordVisible,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: "Password",
-                              hintStyle: const TextStyle(color: Colors.white54),
-                              filled: true,
-                              fillColor: Colors.grey[900],
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                                borderSide: BorderSide.none,
-                              ),
-                              suffixIcon: IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _isPasswordVisible = !_isPasswordVisible;
-                                  });
-                                },
-                                icon: Icon(
-                                  _isPasswordVisible
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 30),
-
-                          SizedBox(
-                            width: double.infinity,
-                            height: 55,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blueAccent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                              ),
-                              onPressed: _isLoading ? null : _login,
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      height: 24,
-                                      width: 24,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Text(
-                                "Login",
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          TextButton(
-                            onPressed: _isLoading
-                                ? null
-                                : () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const SignUpScreen(),
-                                      ),
-                                    );
-                                  },
-                            child: const Text(
-                              "Don't have an account? Sign Up",
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+    return AuthScaffold(
+      title: 'Welcome\nback.',
+      subtitle: 'Log in to find buses and follow them live.',
+      bannerText: 'Live bus tracking around Kochi',
+      children: [
+        if (_errorMessage != null) ...[
+          InlineMessage(_errorMessage!),
+          const SizedBox(height: 18),
+        ],
+        TextField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
+          decoration: const InputDecoration(
+            hintText: 'Email',
+            prefixIcon: Icon(Icons.alternate_email),
           ),
         ),
-      ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _passwordController,
+          obscureText: !_isPasswordVisible,
+          autofillHints: const [AutofillHints.password],
+          onSubmitted: (_) => _login(),
+          decoration: InputDecoration(
+            hintText: 'Password',
+            prefixIcon: const Icon(Icons.lock_outline),
+            suffixIcon: IconButton(
+              onPressed: () {
+                setState(() {
+                  _isPasswordVisible = !_isPasswordVisible;
+                });
+              },
+              icon: Icon(_isPasswordVisible ? Icons.visibility_off : Icons.visibility),
+            ),
+          ),
+        ),
+        const SizedBox(height: 26),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _login,
+          child: _isLoading ? const ButtonSpinner() : const Text('Login'),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: _isLoading
+              ? null
+              : () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SignUpScreen(),
+                    ),
+                  );
+                },
+          child: const Text("Don't have an account? Sign Up"),
+        ),
+      ],
     );
   }
 }

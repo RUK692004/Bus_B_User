@@ -98,7 +98,7 @@ void main() {
       );
 
       // Tap Login button with empty inputs
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Login'));
       await tester.pumpAndSettle();
 
       expect(find.text('Please enter email and password.'), findsOneWidget);
@@ -125,7 +125,7 @@ void main() {
       await tester.enterText(find.byType(TextField).at(0), 'wrong@example.com');
       await tester.enterText(find.byType(TextField).at(1), 'wrongpass');
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Login'));
       await tester.pumpAndSettle();
 
       expect(find.text('Invalid email or password.'), findsOneWidget);
@@ -161,7 +161,7 @@ void main() {
       await tester.enterText(find.byType(TextField).at(0), 'valid@example.com');
       await tester.enterText(find.byType(TextField).at(1), 'password123');
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Login'));
       await tester.pumpAndSettle();
 
       expect(find.byType(BusSearchScreen), findsOneWidget);
@@ -185,7 +185,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Sign Up'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Sign Up'));
       await tester.pumpAndSettle();
 
       expect(find.text('Enter your email'), findsOneWidget);
@@ -215,7 +215,7 @@ void main() {
       await tester.enterText(textFields.at(2), 'secure123');
       await tester.enterText(textFields.at(3), 'secure123');
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Sign Up'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Sign Up'));
       await tester.pumpAndSettle();
 
       expect(find.text('An account with this email already exists.'), findsOneWidget);
@@ -253,7 +253,7 @@ void main() {
       await tester.enterText(textFields.at(2), 'secure123');
       await tester.enterText(textFields.at(3), 'secure123');
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Sign Up'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Sign Up'));
       await tester.pumpAndSettle();
 
       expect(find.byType(LoginScreen), findsOneWidget);
@@ -278,7 +278,7 @@ void main() {
       );
 
       expect(find.text('Logout'), findsOneWidget);
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Logout'));
+      await tapVisible(tester, find.widgetWithText(ElevatedButton, 'Logout'));
       await tester.pumpAndSettle();
 
       // Token should now be removed from secure storage

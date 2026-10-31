@@ -13,6 +13,6 @@ void main() {
 
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(app.debugShowCheckedModeBanner, isFalse);
-    expect(app.theme?.brightness, Brightness.dark);
+    expect(app.theme?.brightness, Brightness.light);
   });
 }

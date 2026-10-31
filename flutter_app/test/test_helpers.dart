@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_app/services/location_service.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:stream_channel/stream_channel.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -145,4 +146,12 @@ class _FakeWebSocketSink implements WebSocketSink {
 
   @override
   Future get done => controller.done;
+}
+
+/// Scrolls [finder] into view, then taps it. Pages are taller than the
+/// default 800x600 test surface, so a plain `tap` can miss off-screen widgets.
+Future<void> tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
 }

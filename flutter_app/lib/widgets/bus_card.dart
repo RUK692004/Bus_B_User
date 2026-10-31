@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../models/bus_info.dart';
+import '../theme/app_theme.dart';
+import 'brand.dart';
 
-/// A tappable summary of one bus in the search results.
+/// A tappable summary of one bus in the search results: an outlined card
+/// with the route name, its ends and grey pills for the details.
 class BusCard extends StatelessWidget {
   final BusInfo bus;
   final VoidCallback? onTap;
@@ -11,75 +14,76 @@ class BusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 15),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(20),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Material(
+        color: AppColors.paper,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AppColors.ink, width: AppTheme.outline),
+          borderRadius: BorderRadius.circular(16),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2C2C2C),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: const Icon(Icons.directions_bus, color: Colors.white),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    bus.name,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(bus.name, style: AppText.heading.copyWith(fontSize: 22)),
                     ),
+                    const SizedBox(width: 12),
+                    const RoundIconButton(icon: Icons.north_east, size: 40),
+                  ],
+                ),
+                if (bus.start != null && bus.end != null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.route_outlined, size: 18, color: AppColors.muted),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${bus.start} → ${bus.end}',
+                          style: AppText.secondary.copyWith(fontSize: 15),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Bus No: ${bus.number}',
-                    style: const TextStyle(color: Colors.white54),
-                  ),
-                  if (bus.start != null && bus.end != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Route: ${bus.start} → ${bus.end}',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                  ],
-                  if (bus.stops.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Stops: ${bus.stops.join(', ')}',
-                      style: const TextStyle(color: Colors.white38, fontSize: 12),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  // Only nearby results carry a distance; other searches report 0.
-                  if (bus.distanceKm > 0) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      '${bus.distanceKm.toStringAsFixed(1)} km away',
-                      style: const TextStyle(color: Colors.white38, fontSize: 12),
-                    ),
-                  ],
                 ],
-              ),
+                if (bus.stops.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'via ${bus.stops.join(', ')}',
+                    style: AppText.secondary.copyWith(fontSize: 13, color: AppColors.faint),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Pill('Bus No: ${bus.number}', icon: Icons.directions_bus_outlined),
+                    if (bus.stops.isNotEmpty)
+                      Pill('${bus.stops.length} ${bus.stops.length == 1 ? 'STOP' : 'STOPS'}'),
+                    // Only nearby results carry a distance; other searches report 0.
+                    if (bus.distanceKm > 0)
+                      Pill(
+                        '${bus.distanceKm.toStringAsFixed(1)} km away',
+                        icon: Icons.near_me_outlined,
+                        color: AppColors.sun,
+                      ),
+                  ],
+                ),
+              ],
             ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-          ],
+          ),
         ),
       ),
     );

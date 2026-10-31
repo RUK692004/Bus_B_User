@@ -68,7 +68,16 @@ void main() {
 
       // Verify title bar
       expect(find.text('Route 101 Express'), findsOneWidget);
-      expect(find.text('Live + Route - 101'), findsOneWidget);
+      expect(find.text('Live route - 101'), findsOneWidget);
+      expect(find.text('Go to Google Maps'), findsOneWidget);
+
+      // Let the saved route load: the timeline shows its stops, with no bus yet.
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Terminal A'), findsOneWidget);
+      expect(find.text('Terminal B'), findsOneWidget);
+      expect(find.text('Waiting for live location…'), findsOneWidget);
+      expect(find.byKey(const ValueKey('timeline_bus_icon')), findsNothing);
 
       // Verify subscription message sent via WebSocket
       final sentMessages = <Map<String, dynamic>>[];
@@ -90,6 +99,13 @@ void main() {
       }));
 
       await tester.pump(const Duration(milliseconds: 50));
+
+      // The bus is placed on the timeline between the two stops.
+      expect(find.text('Between Terminal A and Terminal B'), findsOneWidget);
+      expect(find.byKey(const ValueKey('timeline_bus_icon')), findsOneWidget);
+      expect(find.textContaining('Live · updated'), findsOneWidget);
+      expect(find.text('Terminal B'), findsOneWidget);
+      expect(find.text('Destination · Next stop'), findsOneWidget);
 
       // Leave screen to verify disposal
       await tester.pumpWidget(const MaterialApp(home: Scaffold(body: Text('Done'))));

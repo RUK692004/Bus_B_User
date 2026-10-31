@@ -4,6 +4,8 @@ import '../models/bus_info.dart';
 import '../services/api_client.dart';
 import '../services/bus_service.dart';
 import '../services/location_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/brand.dart';
 import '../widgets/bus_card.dart';
 import 'bus_route_details_screen.dart';
 import 'settings_screen.dart';
@@ -34,6 +36,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
   final TextEditingController _fromController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _busSearchController = TextEditingController();
+  final FocusNode _busSearchFocus = FocusNode();
 
   List<BusInfo> _trackedBuses = [];
   List<String> _fromLocationSuggestions = [];
@@ -50,6 +53,7 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     _fromController.dispose();
     _destinationController.dispose();
     _busSearchController.dispose();
+    _busSearchFocus.dispose();
     super.dispose();
   }
 
@@ -148,9 +152,9 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
 
     final action = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF151515),
+      backgroundColor: AppColors.paper,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => const _UseLocationSheet(),
     );
@@ -291,106 +295,137 @@ class _BusSearchScreenState extends State<BusSearchScreen> {
     );
   }
 
+  void _swapFromAndDestination() {
+    setState(() {
+      final from = _fromController.text;
+      _fromController.text = _destinationController.text;
+      _destinationController.text = from;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-                _Header(onSettingsPressed: _openSettings),
-                const SizedBox(height: 30),
-                _TripSearchCard(
-                  fromController: _fromController,
-                  destinationController: _destinationController,
-                  locationSuggestions: _fromLocationSuggestions,
-                  isFetchingLocation: _isFetchingLocation,
-                  isSearchingTrips: _isSearchingTrips,
-                  onFromTap: _showFromSuggestions,
-                  onUseCurrentLocation: _useCurrentLocationAsFrom,
-                  onSuggestionSelected: (suggestion) {
-                    setState(() {
-                      _fromController.text = suggestion;
-                    });
-                  },
-                  onSearch: _searchTrips,
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFFFF4B8), Color(0xFFFBE3F6), AppColors.paper],
                 ),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.redAccent, fontSize: 13),
-                  ),
-                ],
-                const SizedBox(height: 25),
-                _BusNumberSearchBar(
-                  controller: _busSearchController,
-                  isSearching: _isSearchingBus,
-                  onSearch: _searchBusByNumber,
-                ),
-                const SizedBox(height: 30),
-                const Text(
-                  'Tracking Buses',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                if (_trackedBuses.isEmpty)
-                  const _EmptyResults()
-                else
-                  Column(
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final bus in _trackedBuses)
-                        BusCard(bus: bus, onTap: () => _openBusDetails(bus)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const BrandWordmark(),
+                          RoundIconButton(
+                            icon: Icons.settings_outlined,
+                            tooltip: 'Settings',
+                            outlined: true,
+                            onPressed: _openSettings,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      const AccentBanner(text: 'Where are you headed today?'),
+                      _TripSearchCard(
+                        fromController: _fromController,
+                        destinationController: _destinationController,
+                        locationSuggestions: _fromLocationSuggestions,
+                        isFetchingLocation: _isFetchingLocation,
+                        isSearchingTrips: _isSearchingTrips,
+                        onFromTap: _showFromSuggestions,
+                        onUseCurrentLocation: _useCurrentLocationAsFrom,
+                        onSuggestionSelected: (suggestion) {
+                          setState(() {
+                            _fromController.text = suggestion;
+                          });
+                        },
+                        onSearch: _searchTrips,
+                      ),
+                      TileGrid(
+                        items: [
+                          GridTileItem(
+                            label: 'Nearby buses',
+                            icon: Icons.near_me_outlined,
+                            iconColor: AppColors.violet,
+                            onTap: _fetchLocationAndNearbyBuses,
+                          ),
+                          GridTileItem(
+                            label: 'Bus number',
+                            icon: Icons.tag,
+                            onTap: _busSearchFocus.requestFocus,
+                          ),
+                          GridTileItem(
+                            label: 'Swap From / To',
+                            icon: Icons.swap_vert,
+                            onTap: _swapFromAndDestination,
+                          ),
+                          GridTileItem(
+                            label: 'Settings',
+                            icon: Icons.tune,
+                            onTap: _openSettings,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
-                const SizedBox(height: 30),
-              ],
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  final VoidCallback onSettingsPressed;
-
-  const _Header({required this.onSettingsPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Row(
-          children: [
-            Icon(Icons.directions_bus, color: Colors.white, size: 28),
-            SizedBox(width: 8),
-            Text(
-              'BusBee',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+            const TickerBand(text: 'Live bus tracking  ✨  Search by route  ✨  Follow your bus in real time'),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: 20),
+                    InlineMessage(_errorMessage!),
+                  ],
+                  const SquiggleDivider(),
+                  const Text('Find by bus number', style: AppText.title),
+                  const SizedBox(height: 6),
+                  const Text('Know the number on the board? Jump straight to it.', style: AppText.secondary),
+                  const SizedBox(height: 18),
+                  _BusNumberSearchBar(
+                    controller: _busSearchController,
+                    focusNode: _busSearchFocus,
+                    isSearching: _isSearchingBus,
+                    onSearch: _searchBusByNumber,
+                  ),
+                  const SquiggleDivider(),
+                  Row(
+                    children: [
+                      const Expanded(child: Text('Tracking buses', style: AppText.title)),
+                      if (_trackedBuses.isNotEmpty) Pill('${_trackedBuses.length} FOUND'),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  if (_trackedBuses.isEmpty)
+                    const _EmptyResults()
+                  else
+                    for (final bus in _trackedBuses)
+                      BusCard(bus: bus, onTap: () => _openBusDetails(bus)),
+                  const SquiggleDivider(),
+                  const FadedFooter(text: 'Safe\ntravels!'),
+                ],
               ),
             ),
           ],
         ),
-        IconButton(
-          icon: const Icon(Icons.settings, color: Colors.white70),
-          onPressed: onSettingsPressed,
-        ),
-      ],
+      ),
     );
   }
 }
@@ -404,25 +439,29 @@ class _UseLocationSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: 44,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 18),
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
+            const Text('Starting point', style: AppText.heading),
+            const SizedBox(height: 12),
             ListTile(
-              leading: const Icon(Icons.my_location, color: Colors.white70),
-              title: const Text(
-                'Use your location',
-                style: TextStyle(color: Colors.white),
-              ),
+              contentPadding: EdgeInsets.zero,
+              leading: const RoundIconButton(icon: Icons.my_location, size: 44),
+              title: const Text('Use your location', style: AppText.body),
+              subtitle: const Text('Find the nearest place names', style: AppText.secondary),
               onTap: () => Navigator.pop(context, useLocation),
             ),
           ],
@@ -432,7 +471,8 @@ class _UseLocationSheet extends StatelessWidget {
   }
 }
 
-/// "From" / "Destination" inputs, location suggestions and the search button.
+/// "From" / "Destination" inputs, location suggestions and the search button,
+/// in an outlined box that sits under the accent banner.
 class _TripSearchCard extends StatelessWidget {
   final TextEditingController fromController;
   final TextEditingController destinationController;
@@ -456,85 +496,73 @@ class _TripSearchCard extends StatelessWidget {
     required this.onSearch,
   });
 
+  static const _bare = InputDecoration(
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    filled: false,
+    contentPadding: EdgeInsets.symmetric(vertical: 18),
+  );
+
   @override
   Widget build(BuildContext context) {
+    const side = BorderSide(color: AppColors.ink, width: AppTheme.outline);
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(25),
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+      decoration: const BoxDecoration(
+        color: AppColors.paper,
+        border: Border(left: side, right: side),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextField(
             controller: fromController,
             onTap: onFromTap,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
+            style: AppText.body.copyWith(fontSize: 16),
+            decoration: _bare.copyWith(
               hintText: 'From',
-              hintStyle: const TextStyle(color: Colors.white54),
-              border: InputBorder.none,
-              icon: const Icon(Icons.circle_outlined, color: Colors.white70),
+              prefixIcon: const Icon(Icons.trip_origin, color: AppColors.ink),
               suffixIcon: IconButton(
                 onPressed: isFetchingLocation ? null : onUseCurrentLocation,
                 icon: isFetchingLocation
-                    ? const _SmallSpinner(size: 18, color: Colors.white70)
-                    : const Icon(Icons.my_location, color: Colors.white70),
+                    ? const _SmallSpinner(size: 18, color: AppColors.ink)
+                    : const Icon(Icons.my_location, color: AppColors.ink),
                 tooltip: 'Use current location',
               ),
             ),
           ),
           if (locationSuggestions.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final suggestion in locationSuggestions)
-                    ActionChip(
-                      label: Text(suggestion),
-                      avatar: const Icon(Icons.place, size: 16, color: Colors.white70),
-                      labelStyle: const TextStyle(color: Colors.white),
-                      backgroundColor: const Color(0xFF2C2C2C),
-                      side: const BorderSide(color: Colors.white24),
-                      onPressed: () => onSuggestionSelected(suggestion),
-                    ),
-                ],
-              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final suggestion in locationSuggestions)
+                  ActionChip(
+                    label: Text(suggestion),
+                    avatar: const Icon(Icons.place_outlined, size: 16, color: AppColors.ink),
+                    onPressed: () => onSuggestionSelected(suggestion),
+                  ),
+              ],
             ),
+            const SizedBox(height: 8),
           ],
-          const Divider(color: Colors.white24),
+          const Divider(color: AppColors.ink, thickness: AppTheme.outline, height: AppTheme.outline),
           TextField(
             controller: destinationController,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
+            style: AppText.body.copyWith(fontSize: 16),
+            decoration: _bare.copyWith(
               hintText: 'Destination',
-              hintStyle: TextStyle(color: Colors.white54),
-              border: InputBorder.none,
-              icon: Icon(Icons.location_on, color: Colors.white70),
+              prefixIcon: const Icon(Icons.location_on_outlined, color: AppColors.ink),
             ),
           ),
-          const SizedBox(height: 15),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2C2C2C),
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-              onPressed: isSearchingTrips ? null : onSearch,
-              child: isSearchingTrips
-                  ? const _SmallSpinner(size: 20, color: Colors.white)
-                  : const Text(
-                      'Search Trips',
-                      style: TextStyle(color: Colors.white),
-                    ),
-            ),
+          const Divider(color: AppColors.ink, thickness: AppTheme.outline, height: AppTheme.outline),
+          const SizedBox(height: 18),
+          ElevatedButton(
+            onPressed: isSearchingTrips ? null : onSearch,
+            child: isSearchingTrips
+                ? const _SmallSpinner(size: 20, color: AppColors.paper)
+                : const Text('Search Trips'),
           ),
         ],
       ),
@@ -542,13 +570,16 @@ class _TripSearchCard extends StatelessWidget {
   }
 }
 
+/// Outlined pill search field with a round black "go" button.
 class _BusNumberSearchBar extends StatelessWidget {
   final TextEditingController controller;
+  final FocusNode focusNode;
   final bool isSearching;
   final VoidCallback onSearch;
 
   const _BusNumberSearchBar({
     required this.controller,
+    required this.focusNode,
     required this.isSearching,
     required this.onSearch,
   });
@@ -556,38 +587,48 @@ class _BusNumberSearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(30),
+      padding: const EdgeInsets.fromLTRB(18, 4, 6, 4),
+      decoration: ShapeDecoration(
+        color: AppColors.paper,
+        shape: StadiumBorder(
+          side: BorderSide(color: AppColors.ink, width: AppTheme.outline),
+        ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.search, color: Colors.white54),
+          const Icon(Icons.search, color: AppColors.ink),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: controller,
-              style: const TextStyle(color: Colors.white),
+              focusNode: focusNode,
+              style: AppText.body.copyWith(fontSize: 16),
               textCapitalization: TextCapitalization.characters,
               decoration: const InputDecoration(
                 hintText: 'Search by Bus No.',
-                hintStyle: TextStyle(color: Colors.white54),
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+                contentPadding: EdgeInsets.symmetric(vertical: 14),
               ),
               onSubmitted: (_) => onSearch(),
             ),
           ),
-          isSearching
-              ? const _SmallSpinner(size: 18, color: Colors.white54)
-              : IconButton(
-                  icon: const Icon(
-                    Icons.arrow_forward_ios,
-                    color: Colors.white54,
-                    size: 18,
+          SizedBox(
+            width: 46,
+            height: 46,
+            child: isSearching
+                ? const Center(child: _SmallSpinner(size: 20, color: AppColors.ink))
+                : Material(
+                    color: AppColors.ink,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_forward_ios, color: AppColors.paper, size: 16),
+                      onPressed: onSearch,
+                    ),
                   ),
-                  onPressed: onSearch,
-                ),
+          ),
         ],
       ),
     );
@@ -599,28 +640,15 @@ class _EmptyResults extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return OutlinedPanel(
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2C2C2C),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: const Icon(Icons.directions_bus, color: Colors.white),
-          ),
-          const SizedBox(width: 15),
-          const Expanded(
+          const RoundIconButton(icon: Icons.directions_bus_outlined, size: 48),
+          const SizedBox(width: 16),
+          Expanded(
             child: Text(
               'Search for a bus number or enter a route to see matching buses here.',
-              style: TextStyle(color: Colors.white54, fontSize: 16),
+              style: AppText.secondary.copyWith(fontSize: 15),
             ),
           ),
         ],
