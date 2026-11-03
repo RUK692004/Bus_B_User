@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../theme/app_theme.dart';
 import '../widgets/auth_scaffold.dart';
 import '../widgets/brand.dart';
 import 'login_screen.dart';
@@ -81,10 +80,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return AuthScaffold(
-      title: 'Join\nBusBee.',
+      title: 'Never miss\nyour bus again',
       subtitle: 'Create an account to search routes and track buses live.',
-      bannerText: 'Never miss your bus again',
-      bannerColor: AppColors.ink,
+      badgeText: 'Free for riders',
+      badgeAction: 'Join now',
+      glow: GlowStyle.sweep,
       children: [
         if (_errorMessage != null) ...[
           InlineMessage(_errorMessage!),

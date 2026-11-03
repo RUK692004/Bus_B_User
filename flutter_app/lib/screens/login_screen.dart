@@ -81,9 +81,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return AuthScaffold(
-      title: 'Welcome\nback.',
+      title: 'Welcome back\nto BusBee',
       subtitle: 'Log in to find buses and follow them live.',
-      bannerText: 'Live bus tracking around Kochi',
+      badgeText: 'Live bus tracking',
+      badgeAction: 'Kochi',
       children: [
         if (_errorMessage != null) ...[
           InlineMessage(_errorMessage!),

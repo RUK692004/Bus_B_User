@@ -55,9 +55,12 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/logo.png"
+  remove_alpha_ios: true  # the App Store rejects icons with an alpha channel
 
   adaptive_icon_background: "#ffffff"
-  adaptive_icon_foreground: "assets/images/logo.png"
+  # Same logo scaled into Android's visible centre (66.7%) on a transparent
+  # background, so round/rounded launcher masks don't cut off the text.
+  adaptive_icon_foreground: "assets/images/logo_foreground.png"
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -77,14 +80,6 @@ flutter:
   # Bundled (not fetched at runtime) so the app and tests work offline.
   # Licences: assets/fonts/OFL-*.txt
   fonts:
-    - family: BricolageGrotesque
-      fonts:
-        - asset: assets/fonts/BricolageGrotesque-600.ttf
-          weight: 600
-        - asset: assets/fonts/BricolageGrotesque-700.ttf
-          weight: 700
-        - asset: assets/fonts/BricolageGrotesque-800.ttf
-          weight: 800
     - family: Manrope
       fonts:
         - asset: assets/fonts/Manrope-400.ttf

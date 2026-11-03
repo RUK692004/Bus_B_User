@@ -16,8 +16,8 @@ class RouteTimelineTile extends StatelessWidget {
   static const double _railWidth = 48;
   static const double _dotY = 20;
 
-  static const Color _passedColor = AppColors.ink;
-  static const Color _aheadColor = AppColors.divider;
+  static const Color _passedColor = AppColors.text;
+  static const Color _aheadColor = AppColors.border;
 
   final String name;
 
@@ -99,8 +99,8 @@ class RouteTimelineTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppText.body.copyWith(
-                      fontFamily: isHighlighted ? AppFonts.display : AppFonts.body,
-                      color: state == TimelineStopState.passed ? AppColors.muted : AppColors.ink,
+                      fontFamily: AppFonts.body,
+                      color: state == TimelineStopState.passed ? AppColors.muted : AppColors.text,
                       fontSize: isHighlighted ? 17 : 15,
                       fontWeight: isHighlighted ? FontWeight.w700 : FontWeight.w500,
                       height: 1.2,
@@ -110,7 +110,7 @@ class RouteTimelineTile extends StatelessWidget {
                   Text(
                     status == null ? _label : '$_label · $status',
                     style: AppText.label.copyWith(
-                      color: isHighlighted ? AppColors.violet : AppColors.faint,
+                      color: isHighlighted ? AppColors.ember : AppColors.faint,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.2,
                     ),
@@ -150,10 +150,10 @@ class RouteTimelineTile extends StatelessWidget {
       height: 16,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: reached ? _passedColor : AppColors.paper,
+        color: reached ? _passedColor : AppColors.background,
         border: Border.all(
           color: state == TimelineStopState.next
-              ? AppColors.violet
+              ? AppColors.ember
               : reached
                   ? _passedColor
                   : AppColors.faint,
@@ -170,10 +170,14 @@ class RouteTimelineTile extends StatelessWidget {
       height: 28,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: busIsStale ? AppColors.faint : AppColors.sun,
-        border: Border.all(color: AppColors.ink, width: 2),
+        color: busIsStale ? AppColors.faint : AppColors.ember,
+        border: Border.all(color: AppColors.background, width: 2),
+        boxShadow: [
+          if (!busIsStale)
+            BoxShadow(color: AppColors.ember.withValues(alpha: 0.7), blurRadius: 14, spreadRadius: 1),
+        ],
       ),
-      child: const Icon(Icons.directions_bus, size: 16, color: AppColors.ink),
+      child: const Icon(Icons.directions_bus, size: 16, color: AppColors.onLight),
     );
   }
 }

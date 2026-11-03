@@ -1,14 +1,12 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// "BusBee" wordmark.
+/// "BusBee" wordmark: an ember ring followed by the name.
 class BrandWordmark extends StatelessWidget {
   final double size;
 
-  const BrandWordmark({super.key, this.size = 26});
+  const BrandWordmark({super.key, this.size = 18});
 
   @override
   Widget build(BuildContext context) {
@@ -16,248 +14,231 @@ class BrandWordmark extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          padding: EdgeInsets.all(size * 0.18),
-          decoration: const BoxDecoration(color: AppColors.sun, shape: BoxShape.circle),
-          child: Icon(Icons.directions_bus_rounded, size: size * 0.85, color: AppColors.ink),
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.ember, width: size * 0.22),
+          ),
         ),
-        SizedBox(width: size * 0.3),
+        SizedBox(width: size * 0.45),
         Text(
           'BusBee',
-          style: AppText.title.copyWith(fontSize: size, fontWeight: FontWeight.w800),
+          style: AppText.heading.copyWith(fontSize: size * 1.05, fontWeight: FontWeight.w600),
         ),
       ],
     );
   }
 }
 
-/// The small hand-drawn wave used to separate page sections.
-class SquiggleDivider extends StatelessWidget {
-  const SquiggleDivider({super.key});
+/// Where the ember glow sits behind a [GlowBackdrop].
+enum GlowStyle {
+  /// Pours down from the top edge.
+  top,
 
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 28),
-      child: Center(
-        child: CustomPaint(size: Size(84, 14), painter: _SquigglePainter()),
-      ),
-    );
-  }
+  /// Thin lit rim of a dark planet rising at the bottom.
+  horizon,
+
+  /// Sweeps in from the bottom-right corner.
+  sweep,
+
+  /// Rises from the bottom centre.
+  bottom,
 }
 
-class _SquigglePainter extends CustomPainter {
-  const _SquigglePainter();
+/// Paints a soft ember glow behind [child] and sizes itself to the child.
+///
+/// Static on purpose: screen tests use `pumpAndSettle`, so a never-ending
+/// animation here would hang them.
+class GlowBackdrop extends StatelessWidget {
+  final GlowStyle style;
+  final Widget child;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-    final path = Path()..moveTo(0, size.height / 2);
-    for (double x = 0; x <= size.width; x += 1) {
-      path.lineTo(x, size.height / 2 + sin(x / size.width * 3 * 2 * pi) * size.height / 3);
-    }
-    canvas.drawPath(path, paint);
-  }
+  /// Scales the glow's brightness (0–1).
+  final double intensity;
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// Black band with a repeated phrase, like a marquee frozen in place.
-class TickerBand extends StatelessWidget {
-  final String text;
-
-  const TickerBand({super.key, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      color: AppColors.ink,
-      alignment: Alignment.centerLeft,
-      child: ClipRect(
-        child: OverflowBox(
-          alignment: Alignment.centerLeft,
-          maxWidth: double.infinity,
-          child: Text(
-            List.filled(6, '  $text  ✨').join(),
-            maxLines: 1,
-            softWrap: false,
-            style: AppText.body.copyWith(color: AppColors.paper, fontWeight: FontWeight.w600),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Round icon button: grey filled (default) or outlined.
-class RoundIconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final String? tooltip;
-  final bool outlined;
-  final double size;
-
-  const RoundIconButton({
+  const GlowBackdrop({
     super.key,
-    required this.icon,
-    this.onPressed,
-    this.tooltip,
-    this.outlined = false,
-    this.size = 52,
+    required this.style,
+    required this.child,
+    this.intensity = 1,
   });
 
   @override
   Widget build(BuildContext context) {
-    final button = Material(
-      color: outlined ? AppColors.paper : AppColors.pill,
-      shape: CircleBorder(
-        side: outlined
-            ? const BorderSide(color: AppColors.ink, width: AppTheme.outline)
-            : BorderSide.none,
-      ),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onPressed,
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Icon(icon, color: AppColors.ink, size: size * 0.44),
-        ),
-      ),
-    );
-    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+    final glow = CustomPaint(painter: _GlowPainter(style, intensity), child: child);
+    // The horizon's dark planet is left to spill below the box, so the glow
+    // fades into the page instead of ending in a hard edge.
+    return style == GlowStyle.horizon ? glow : ClipRect(child: glow);
   }
 }
 
-/// Grey rounded label, e.g. "KL-07-101" or "4 STOPS".
-class Pill extends StatelessWidget {
-  final String text;
-  final IconData? icon;
-  final Color color;
+class _GlowPainter extends CustomPainter {
+  final GlowStyle style;
+  final double intensity;
 
-  const Pill(this.text, {super.key, this.icon, this.color = AppColors.pill});
+  const _GlowPainter(this.style, this.intensity);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    switch (style) {
+      case GlowStyle.top:
+        _blob(canvas, Offset(size.width * 0.35, -size.width * 0.15), size.width * 1.05);
+      case GlowStyle.sweep:
+        _blob(canvas, Offset(size.width * 1.05, size.height * 1.02), size.width * 0.95);
+      case GlowStyle.bottom:
+        _blob(canvas, Offset(size.width / 2, size.height + size.width * 0.12), size.width * 0.85);
+      case GlowStyle.horizon:
+        _horizon(canvas, size);
+    }
+  }
+
+  /// A radial glow: white-hot centre fading through ember to black.
+  void _blob(Canvas canvas, Offset centre, double radius) {
+    final rect = Rect.fromCircle(center: centre, radius: radius);
+    final paint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          AppColors.glow.withValues(alpha: intensity),
+          AppColors.peach.withValues(alpha: 0.95 * intensity),
+          AppColors.emberMid.withValues(alpha: 0.9 * intensity),
+          AppColors.emberDeep.withValues(alpha: 0.6 * intensity),
+          AppColors.background.withValues(alpha: 0),
+        ],
+        stops: const [0, 0.15, 0.35, 0.6, 1],
+      ).createShader(rect);
+    canvas.drawCircle(centre, radius, paint);
+  }
+
+  /// A huge dark circle whose top edge catches the light.
+  void _horizon(Canvas canvas, Size size) {
+    final radius = size.width * 1.1;
+    final centre = Offset(size.width / 2, size.height - 48 + radius);
+
+    // Only the rim is wanted: stop a little below the box, where the planet
+    // has left the sides and everything under it is already black.
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(0, 0, size.width, size.height + 160));
+
+    canvas.drawCircle(
+      centre,
+      radius,
+      Paint()
+        ..color = AppColors.horizon.withValues(alpha: 0.85 * intensity)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 38),
+    );
+    canvas.drawCircle(
+      centre,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 6
+        ..color = AppColors.glow.withValues(alpha: 0.9 * intensity)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+    );
+    canvas.drawCircle(
+      centre.translate(0, 8),
+      radius,
+      Paint()
+        ..color = AppColors.background
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlowPainter oldDelegate) =>
+      oldDelegate.style != style || oldDelegate.intensity != intensity;
+}
+
+/// Floating, hairline-bordered bar with the wordmark and a trailing action.
+class NavBarPill extends StatelessWidget {
+  final Widget? leading;
+  final Widget? trailing;
+
+  const NavBarPill({super.key, this.leading, this.trailing});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: ShapeDecoration(color: color, shape: const StadiumBorder()),
+      height: 54,
+      padding: const EdgeInsets.only(left: 16, right: 7),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.85),
+        border: Border.all(color: AppColors.borderStrong, width: AppTheme.hairline),
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 15, color: AppColors.ink),
-            const SizedBox(width: 6),
-          ],
-          Text(text, style: AppText.label),
+          leading ?? const BrandWordmark(),
+          const Spacer(),
+          ?trailing,
         ],
       ),
     );
   }
 }
 
-/// A plain box with a thin black outline.
-class OutlinedPanel extends StatelessWidget {
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  final double radius;
-
-  const OutlinedPanel({
-    super.key,
-    required this.child,
-    this.padding = const EdgeInsets.all(20),
-    this.radius = 0,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: AppColors.paper,
-        border: Border.all(color: AppColors.ink, width: AppTheme.outline),
-        borderRadius: BorderRadius.circular(radius),
-      ),
-      child: child,
-    );
-  }
-}
-
-/// One cell of a [TileGrid].
-class GridTileItem {
+/// Small white button for the nav bar ("Login").
+class NavBarButton extends StatelessWidget {
   final String label;
-  final IconData icon;
-  final Color iconColor;
-  final VoidCallback onTap;
+  final VoidCallback? onPressed;
 
-  const GridTileItem({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.iconColor = AppColors.ink,
-  });
-}
-
-/// Two-column grid of outlined tiles ("Activities", "Study Jams", ...).
-class TileGrid extends StatelessWidget {
-  final List<GridTileItem> items;
-
-  const TileGrid({super.key, required this.items});
+  const NavBarButton({super.key, required this.label, this.onPressed});
 
   @override
   Widget build(BuildContext context) {
-    const side = BorderSide(color: AppColors.ink, width: AppTheme.outline);
-    final rows = <Widget>[];
-    for (var i = 0; i < items.length; i += 2) {
-      rows.add(IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: _tile(items[i], right: i + 1 < items.length)),
-            if (i + 1 < items.length) Expanded(child: _tile(items[i + 1])),
-          ],
+    return Material(
+      color: AppColors.text,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Text(label, style: AppText.label.copyWith(color: AppColors.onLight, fontSize: 13)),
         ),
-      ));
-      if (i + 2 < items.length) rows.add(const Divider(height: AppTheme.outline, thickness: AppTheme.outline, color: AppColors.ink));
-    }
-    return Container(
-      decoration: const BoxDecoration(border: Border(left: side, right: side, bottom: side, top: side)),
-      child: Column(children: rows),
+      ),
     );
   }
+}
 
-  Widget _tile(GridTileItem item, {bool right = false}) {
+/// Badge above a headline: "Live bus tracking | Kochi ›".
+class AnnouncementPill extends StatelessWidget {
+  final String text;
+  final String? actionLabel;
+  final VoidCallback? onTap;
+
+  const AnnouncementPill(this.text, {super.key, this.actionLabel, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
     return Material(
-      color: AppColors.paper,
+      color: AppColors.surface.withValues(alpha: 0.8),
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: AppColors.border, width: AppTheme.hairline),
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: InkWell(
-        onTap: item.onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 84),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          decoration: right
-              ? const BoxDecoration(
-                  border: Border(right: BorderSide(color: AppColors.ink, width: AppTheme.outline)),
-                )
-              : null,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  item.label,
-                  style: AppText.body.copyWith(
-                    fontFamily: AppFonts.display,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
+              Text(text, style: AppText.label.copyWith(color: AppColors.subtle, fontWeight: FontWeight.w500)),
+              if (actionLabel != null) ...[
+                Container(
+                  width: AppTheme.hairline,
+                  height: 12,
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  color: AppColors.border,
                 ),
-              ),
-              Icon(item.icon, color: item.iconColor, size: 26),
+                Text(actionLabel!, style: AppText.label.copyWith(color: AppColors.ember)),
+                const SizedBox(width: 2),
+                const Icon(Icons.chevron_right, size: 15, color: AppColors.ember),
+              ],
             ],
           ),
         ),
@@ -266,56 +247,162 @@ class TileGrid extends StatelessWidget {
   }
 }
 
-/// Coloured strip with a short message and an underlined action
-/// ("Claim your username   CLAIM NOW").
-class AccentBanner extends StatelessWidget {
+/// Big light headline whose lines fade from grey (top) to white (bottom).
+class GradientHeadline extends StatelessWidget {
   final String text;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-  final Color color;
+  final TextStyle style;
+  final TextAlign textAlign;
 
-  const AccentBanner({
+  const GradientHeadline(
+    this.text, {
     super.key,
-    required this.text,
-    this.actionLabel,
-    this.onAction,
-    this.color = AppColors.violet,
+    this.style = AppText.hero,
+    this.textAlign = TextAlign.center,
   });
 
   @override
   Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: (bounds) => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [AppColors.headlineTop, AppColors.text],
+      ).createShader(bounds),
+      child: Text(text, textAlign: textAlign, style: style),
+    );
+  }
+}
+
+/// Round dark icon button with a hairline border.
+class RoundIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final String? tooltip;
+  final double size;
+
+  const RoundIconButton({
+    super.key,
+    required this.icon,
+    this.onPressed,
+    this.tooltip,
+    this.size = 44,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Material(
+      color: AppColors.raised,
+      shape: const CircleBorder(side: BorderSide(color: AppColors.border, width: AppTheme.hairline)),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onPressed,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Icon(icon, color: AppColors.text, size: size * 0.44),
+        ),
+      ),
+    );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+  }
+}
+
+/// Small rounded label, e.g. "Bus No: KL-07-101" or "4 stops".
+class Pill extends StatelessWidget {
+  final String text;
+  final IconData? icon;
+
+  /// Ember text and tint instead of grey.
+  final bool accent;
+
+  const Pill(this.text, {super.key, this.icon, this.accent = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent ? AppColors.ember : AppColors.muted;
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color,
-        border: Border.all(color: AppColors.ink, width: AppTheme.outline),
+        color: accent ? AppColors.ember.withValues(alpha: 0.1) : AppColors.raised,
+        border: Border.all(
+          color: accent ? AppColors.ember.withValues(alpha: 0.4) : AppColors.border,
+          width: AppTheme.hairline,
+        ),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Text(text, style: AppText.body.copyWith(color: AppColors.paper, fontSize: 16)),
-          ),
-          if (actionLabel != null)
-            GestureDetector(
-              onTap: onAction,
-              child: Text(
-                actionLabel!,
-                style: AppText.label.copyWith(
-                  color: AppColors.paper,
-                  fontSize: 13,
-                  decoration: TextDecoration.underline,
-                  decorationColor: AppColors.paper,
-                ),
-              ),
-            ),
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+          ],
+          Text(text, style: AppText.label.copyWith(color: accent ? AppColors.ember : AppColors.text)),
         ],
       ),
     );
   }
 }
 
-/// Error or info message in the same outlined style as the rest of the page.
+/// Dark surface with a hairline border, used for cards and forms.
+class GlassPanel extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  const GlassPanel({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(20),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.85),
+        border: Border.all(color: AppColors.border, width: AppTheme.hairline),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Section title with an optional subtitle and trailing widget.
+class SectionHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+
+  const SectionHeader(this.title, {super.key, this.subtitle, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AppText.title),
+              if (subtitle != null) ...[
+                const SizedBox(height: 6),
+                Text(subtitle!, style: AppText.secondary),
+              ],
+            ],
+          ),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
+/// Error or info message in the same hairline style as the rest of the page.
 class InlineMessage extends StatelessWidget {
   final String text;
   final bool isError;
@@ -324,14 +411,14 @@ class InlineMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isError ? AppColors.danger : AppColors.ink;
+    final color = isError ? AppColors.danger : AppColors.muted;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.06),
-        border: Border.all(color: color, width: AppTheme.outline),
-        borderRadius: BorderRadius.circular(14),
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: AppTheme.hairline),
+        borderRadius: BorderRadius.circular(AppTheme.radius),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,33 +432,24 @@ class InlineMessage extends StatelessWidget {
   }
 }
 
-/// Huge faded sign-off at the bottom of a page ("Hakuna Matata!").
-class FadedFooter extends StatelessWidget {
-  final String text;
+/// Glowing green dot next to "live" text (grey when not live). Static, see
+/// [GlowBackdrop].
+class LiveDot extends StatelessWidget {
+  final bool isLive;
 
-  const FadedFooter({super.key, required this.text});
+  const LiveDot({super.key, required this.isLive});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        children: [
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: AppText.hero.copyWith(fontSize: 64, color: const Color(0xFFE9E9E9), height: 1),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            '• • • •',
-            style: AppText.secondary.copyWith(color: AppColors.faint, letterSpacing: 2),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'BusBee',
-            style: AppText.heading.copyWith(color: AppColors.faint, fontWeight: FontWeight.w600),
-          ),
+    final color = isLive ? AppColors.live : AppColors.faint;
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: [
+          if (isLive) BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 8, spreadRadius: 1),
         ],
       ),
     );

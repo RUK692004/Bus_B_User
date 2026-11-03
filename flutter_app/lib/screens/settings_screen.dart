@@ -40,92 +40,94 @@ class SettingsScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: RoundIconButton(
-                icon: Icons.arrow_back,
-                tooltip: 'Back',
-                outlined: true,
-                onPressed: () => Navigator.maybePop(context),
-              ),
-            ),
-            const SizedBox(height: 28),
-            const Text('Settings', style: AppText.title),
-            const SizedBox(height: 20),
-            _SettingsRow(
-              icon: Icons.info_outline,
-              label: 'About BusBee',
-              onTap: () => _showAbout(context),
-            ),
-            const Divider(),
-            _SettingsRow(
-              icon: Icons.description_outlined,
-              label: 'Open-source licences',
-              onTap: () => showLicensePage(context: context, applicationName: 'BusBee'),
-            ),
-            const Divider(),
-            const SizedBox(height: 28),
-            Container(
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                color: AppColors.ink,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+            NavBarPill(
+              leading: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Done for today?',
-                              style: AppText.heading.copyWith(color: AppColors.paper, fontSize: 22),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'You can log back in any time.',
-                              style: AppText.secondary.copyWith(color: AppColors.faint),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: const BoxDecoration(color: AppColors.sun, shape: BoxShape.circle),
-                        child: const Icon(Icons.waving_hand_outlined, color: AppColors.ink),
-                      ),
-                    ],
+                  RoundIconButton(
+                    icon: Icons.arrow_back,
+                    tooltip: 'Back',
+                    size: 36,
+                    onPressed: () => Navigator.maybePop(context),
                   ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.paper,
-                      foregroundColor: AppColors.ink,
-                    ),
-                    onPressed: () => _logout(context),
-                    child: const Text('Logout'),
+                  const SizedBox(width: 12),
+                  const Text('Settings', style: AppText.heading),
+                ],
+              ),
+              trailing: const Padding(
+                padding: EdgeInsets.only(right: 9),
+                child: BrandWordmark(size: 14),
+              ),
+            ),
+            const SizedBox(height: 36),
+            const GradientHeadline('Your BusBee', textAlign: TextAlign.start, style: AppText.title),
+            const SizedBox(height: 16),
+            GlassPanel(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Column(
+                children: [
+                  _SettingsRow(
+                    icon: Icons.info_outline,
+                    label: 'About BusBee',
+                    onTap: () => _showAbout(context),
+                  ),
+                  const Divider(),
+                  _SettingsRow(
+                    icon: Icons.description_outlined,
+                    label: 'Open-source licences',
+                    onTap: () => showLicensePage(context: context, applicationName: 'BusBee'),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 120),
+            const SizedBox(height: 24),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.border, width: AppTheme.hairline),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: GlowBackdrop(
+                  style: GlowStyle.bottom,
+                  intensity: 0.9,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const GradientHeadline('Done for today?', style: AppText.title),
+                        const SizedBox(height: 8),
+                        Text(
+                          'You can log back in any time.',
+                          textAlign: TextAlign.center,
+                          style: AppText.secondary.copyWith(color: AppColors.text.withValues(alpha: 0.75)),
+                        ),
+                        const SizedBox(height: 22),
+                        ElevatedButton(
+                          onPressed: () => _logout(context),
+                          child: const Text('Logout'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 96),
             Center(
               child: Text.rich(
                 TextSpan(
-                  style: AppText.secondary,
+                  style: AppText.secondary.copyWith(color: AppColors.faint),
                   children: [
                     const TextSpan(text: 'Made with '),
                     const WidgetSpan(
                       alignment: PlaceholderAlignment.middle,
-                      child: Icon(Icons.favorite, color: AppColors.danger, size: 16),
+                      child: Icon(Icons.favorite, color: AppColors.ember, size: 16),
                     ),
                     TextSpan(
                       text: ' in Kochi',
-                      style: AppText.secondary.copyWith(color: AppColors.ink, fontWeight: FontWeight.w700),
+                      style: AppText.secondary.copyWith(color: AppColors.muted, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -150,12 +152,13 @@ class _SettingsRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.symmetric(vertical: 18),
         child: Row(
           children: [
-            Icon(icon, color: AppColors.ink, size: 26),
-            const SizedBox(width: 16),
-            Expanded(child: Text(label, style: AppText.body.copyWith(fontSize: 17))),
+            Icon(icon, color: AppColors.muted, size: 22),
+            const SizedBox(width: 14),
+            Expanded(child: Text(label, style: AppText.body.copyWith(fontSize: 16))),
+            const Icon(Icons.chevron_right, color: AppColors.faint),
           ],
         ),
       ),

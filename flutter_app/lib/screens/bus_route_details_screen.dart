@@ -216,7 +216,10 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
     final names = _rowNames;
 
     return Scaffold(
-      body: SafeArea(
+      body: GlowBackdrop(
+        style: GlowStyle.top,
+        intensity: 0.4,
+        child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -227,7 +230,6 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
                   RoundIconButton(
                     icon: Icons.arrow_back,
                     tooltip: 'Back',
-                    outlined: true,
                     onPressed: () => Navigator.maybePop(context),
                   ),
                   const SizedBox(width: 14),
@@ -260,7 +262,7 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
               child: Row(
                 children: [
                   const Expanded(child: Text('Route stops', style: AppText.heading)),
-                  Pill('${names.length} STOPS'),
+                  Pill('${names.length} stops'),
                 ],
               ),
             ),
@@ -282,6 +284,7 @@ class _BusRouteDetailsScreenState extends State<BusRouteDetailsScreen> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -340,28 +343,15 @@ class _StatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-      child: OutlinedPanel(
+      child: GlassPanel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Container(
-                  width: 18,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    color: isLive ? AppColors.live.withValues(alpha: 0.15) : AppColors.pill,
-                    border: Border.all(color: isLive ? AppColors.live : AppColors.faint, width: 1.5),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Icon(
-                    Icons.sensors,
-                    size: 11,
-                    color: isLive ? AppColors.live : AppColors.faint,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(child: Text(liveText, style: AppText.secondary.copyWith(color: AppColors.ink))),
+                LiveDot(isLive: isLive),
+                const SizedBox(width: 10),
+                Expanded(child: Text(liveText, style: AppText.secondary.copyWith(color: AppColors.text))),
                 if (isLoading)
                   const SizedBox(
                     width: 14,
@@ -370,14 +360,15 @@ class _StatusCard extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              locationText ?? 'Locating bus…',
-              style: AppText.title.copyWith(
-                fontSize: 24,
-                color: locationText == null ? AppColors.faint : AppColors.ink,
+            const SizedBox(height: 12),
+            if (locationText == null)
+              Text('Locating bus…', style: AppText.title.copyWith(fontSize: 24, color: AppColors.faint))
+            else
+              GradientHeadline(
+                locationText!,
+                textAlign: TextAlign.start,
+                style: AppText.title.copyWith(fontSize: 24),
               ),
-            ),
             if (warning != null) ...[
               const SizedBox(height: 10),
               Text(warning!, style: AppText.secondary.copyWith(color: AppColors.danger, fontSize: 13)),

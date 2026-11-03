@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_app/screens/bus_search_screen.dart';
 import 'package:flutter_app/screens/login_screen.dart';
 import 'package:flutter_app/services/auth_service.dart';
@@ -35,6 +36,14 @@ Future<Widget> determineInitialScreen({AuthService? authService}) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Every page is black, so keep the status and navigation bars dark too.
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    statusBarBrightness: Brightness.dark,
+    systemNavigationBarColor: Colors.black,
+    systemNavigationBarIconBrightness: Brightness.light,
+  ));
 
   final initialScreen = await determineInitialScreen();
 
@@ -50,7 +59,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
+      theme: AppTheme.dark(),
       home: initialScreen,
     );
   }
